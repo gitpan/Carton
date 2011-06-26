@@ -1,0 +1,31 @@
+---
+build_requires:
+  ExtUtils::MakeMaker: 6.42
+  Test::More: 0.88
+  Test::Requires: 0
+configure_requires:
+  ExtUtils::MakeMaker: 6.42
+  version: 0.77
+distribution_type: module
+generated_by: 'Module::Install version 1.01'
+license: perl
+meta-spec:
+  url: http://module-build.sourceforge.net/META-spec-v1.4.html
+  version: 1.4
+name: carton
+no_index:
+  directory:
+    - inc
+    - t
+    - xt
+requires:
+  App::cpanminus: 1.49
+  JSON: 0
+  Module::Metadata: 1.000003
+  Term::ANSIColor: 1.12
+  Try::Tiny: 0
+  perl: 5.8.1
+resources:
+  license: http://dev.perl.org/licenses/
+  repository: git://github.com/miyagawa/carton.git
+version: 0.001_000
