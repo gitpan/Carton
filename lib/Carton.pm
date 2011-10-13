@@ -3,14 +3,22 @@ package Carton;
 use strict;
 use warnings;
 use 5.008_001;
-use version; our $VERSION = qv('v0.1_0');
+use version; our $VERSION = qv('v0.9.0');
 
+use Cwd;
+use Config qw(%Config);
 use Carton::Util;
+use CPAN::Meta;
+use File::Path;
+
+use constant CARTON_LOCK_VERSION => '0.9';
+our $DefaultMirror = 'http://cpan.metacpan.org/';
 
 sub new {
-    my $class = shift;
+    my($class, %args) = @_;
     bless {
-        cpanm => $ENV{PERL_CARTON_CPANM} || 'cpanm',
+        path => $ENV{PERL_CARTON_PATH} || 'local',
+        mirror => $ENV{PERL_CARTON_MIRROR} || $DefaultMirror,
     }, $class;
 }
 
@@ -30,15 +38,15 @@ sub install_from_build_file {
         push @modules, map $_->spec, $tree->children;
     }
 
-    push @modules, $self->show_deps();
+    push @modules, $self->list_dependencies;
     $self->install_conservative(\@modules, 1)
         or die "Installing modules failed\n";
 }
 
-sub show_deps {
+sub list_dependencies {
     my $self = shift;
 
-    my @deps = $self->run_cpanm_output("--showdeps", ".");
+    my @deps = grep !/^perl~/, $self->run_cpanm_output("--showdeps", ".");
     for my $line (@deps) {
         chomp $line;
     }
@@ -81,14 +89,19 @@ sub install_conservative {
 
     $modules = $self->dedupe_modules($modules);
 
-    my $index = $self->build_index($self->lock->{modules});
-    $self->build_mirror_file($index, $self->{mirror_file});
+    if ($self->lock) {
+        my $index = $self->build_index($self->lock->{modules});
+        $self->build_mirror_file($index, $self->{mirror_file});
+    }
+
+    my $mirror = $self->{mirror} || $DefaultMirror;
 
     $self->run_cpanm(
+        "--mirror", $mirror,
+        "--mirror", "http://backpan.perl.org/", # fallback
         "--skip-satisfied",
-        "--mirror", "http://cpan.cpantesters.org/", # fastest
-        "--mirror", "http://backpan.perl.org/",     # fallback
-        "--mirror-index", $self->{mirror_file},
+        ( $mirror ne $DefaultMirror ? "--mirror-only" : () ),
+        ( $self->lock ? ("--mirror-index", $self->{mirror_file}) : () ),
         ( $cascade ? "--cascade-search" : () ),
         @$modules,
     );
@@ -147,38 +160,46 @@ sub build_index {
 
     my $index;
 
-    for my $name (keys %$modules) {
-        my $metadata = $modules->{$name};
-        my $provides = $metadata->{provides};
-        for my $mod (keys %$provides) {
-            $index->{$mod} = { version => $provides->{$mod}, meta => $metadata };
+    while (my($name, $metadata) = each %$modules) {
+        for my $mod (keys %{$metadata->{provides}}) {
+            $index->{$mod} = { %{$metadata->{provides}{$mod}}, meta => $metadata };
         }
     }
 
     return $index;
 }
 
-sub walk_down_tree {
-    my($self, $lock, $cb) = @_;
+sub is_core {
+    my($self, $module, $want_ver, $perl_version) = @_;
+    $perl_version ||= $];
 
     require Module::CoreList;
+    my $is_core  = exists $Module::CoreList::version{$perl_version + 0}{$module}
+        or return;
+
+    my $core_ver = $Module::CoreList::version{$perl_version + 0}{$module};
+    return 1 unless $want_ver;
+    return version->new($core_ver) >= version->new($want_ver);
+};
+
+sub walk_down_tree {
+    my($self, $tree, $cb, $no_warn) = @_;
 
     my %seen;
-    my $tree = $self->build_tree($lock->{modules});
     $tree->walk_down(sub {
         my($node, $depth, $parent) = @_;
         return $tree->abort if $seen{$node->key}++;
 
         if ($node->metadata->{dist}) {
             $cb->($node->metadata, $depth);
-        } elsif (!$Module::CoreList::version{$]+0}{$node->key}) {
+        } elsif (!$self->is_core($node->key, 0) && !$no_warn) {
             warn "Couldn't find ", $node->key, "\n";
         }
     });
 }
 
 sub build_tree {
-    my($self, $modules) = @_;
+    my($self, $modules, $root) = @_;
 
     my $idx  = $self->build_index($modules);
     my $pool = { %$modules }; # copy
@@ -189,7 +210,7 @@ sub build_tree {
         $self->_build_tree($pick, $tree, $tree, $pool, $idx);
     }
 
-    $tree->finalize;
+    $tree->finalize($root);
 
     return $tree;
 }
@@ -210,18 +231,29 @@ sub _build_tree {
     }
 }
 
+sub merge_prereqs {
+    my($self, $prereqs) = @_;
+
+    my %requires;
+    for my $phase (qw( configure build test runtime )) {
+        %requires = (%requires, %{$prereqs->{$phase}{requires} || {}});
+    }
+
+    return \%requires;
+}
+
 sub build_deps {
     my($self, $meta, $idx) = @_;
 
+    my $requires = $self->merge_prereqs($meta->{mymeta}{prereqs});
+
     my @deps;
-    for my $requires (values %{$meta->{requires}}) {
-        for my $module (keys %$requires) {
-            next if $module eq 'perl';
-            if (exists $idx->{$module}) {
-                push @deps, $idx->{$module}{meta}{name};
-            } else {
-                push @deps, $module;
-            }
+    for my $module (keys %$requires) {
+        next if $module eq 'perl';
+        if (exists $idx->{$module}) {
+            push @deps, $idx->{$module}{meta}{name};
+        } else {
+            push @deps, $module;
         }
     }
 
@@ -236,49 +268,128 @@ sub run_cpanm_output {
         return <$kid>;
     } else {
         local $ENV{PERL_CPANM_OPT};
-        exec $self->{cpanm}, "--quiet", "-L", $self->{path}, @args;
+        exec "cpanm", "--quiet", "-L", $self->{path}, @args;
     }
 }
 
 sub run_cpanm {
     my($self, @args) = @_;
     local $ENV{PERL_CPANM_OPT};
-    !system $self->{cpanm}, "--quiet", "-L", $self->{path}, "--notest", @args;
+    !system "cpanm", "--quiet", "-L", $self->{path}, "--notest", @args;
 }
 
 sub update_lock_file {
     my($self, $file) = @_;
 
-    my %locals = $self->find_locals;
-
-    my $spec = {
-        modules => \%locals,
-        perl => $],
-        generator => "carton $VERSION",
-    };
-
-    require JSON;
-    open my $fh, ">", "carton.lock" or die $!;
-    print $fh JSON->new->pretty->encode($spec);
+    my $lock = $self->build_lock;
+    Carton::Util::dump_json($lock, $file);
 
     return 1;
 }
 
-sub find_locals {
+sub build_lock {
+    my $self = shift;
+
+    my %installs = $self->find_installs;
+
+    return {
+        modules => \%installs,
+        version => CARTON_LOCK_VERSION,
+    };
+}
+
+sub find_installs {
     my $self = shift;
 
     require File::Find;
 
-    my @locals;
+    my $libdir = "$self->{path}/lib/perl5/$Config{archname}/.meta";
+    return unless -e $libdir;
+
+    my @installs;
     my $wanted = sub {
-        if ($_ eq 'local.json') {
-            push @locals, $File::Find::name;
+        if ($_ eq 'install.json') {
+            push @installs, [ $File::Find::name, "$File::Find::dir/MYMETA.json" ];
         }
     };
-    File::Find::find($wanted, "$self->{path}/lib/perl5/auto/meta");
+    File::Find::find($wanted, $libdir);
 
-    return map { my $module = Carton::Util::parse_json($_); ($module->{name} => $module) } @locals;
+    return map {
+        my $module = Carton::Util::load_json($_->[0]);
+        my $mymeta = CPAN::Meta->load_file($_->[1])->as_struct({ version => "2" });
+        ($module->{name} => { %$module, mymeta => $mymeta }) } @installs;
+}
+
+sub check_satisfies {
+    my($self, $lock, $deps) = @_;
+
+    my @unsatisfied;
+    my $index = $self->build_index($lock->{modules});
+    my %pool = %{$lock->{modules}}; # copy
+
+    my @root = map { [ split /~/, $_, 2 ] } @$deps;
+
+    for my $dep (@root) {
+        $self->_check_satisfies($dep, \@unsatisfied, $index, \%pool);
+    }
+
+    my $tree = keys %pool ? $self->build_tree(\%pool) : undef;
+
+    return {
+        unsatisfied => \@unsatisfied,
+        superflous  => $tree,
+    };
+}
+
+sub _check_satisfies {
+    my($self, $dep, $unsatisfied, $index, $pool) = @_;
+
+    my($mod, $ver) = @$dep;
+
+    my $found = $index->{$mod};
+    if ($found) {
+        delete $pool->{$found->{meta}{name}};
+    } elsif ($self->is_core($mod, $ver)) {
+        return;
+    }
+
+    unless ($found and (!$ver or version->new($found->{version}) >= version->new($ver))) {
+        push @$unsatisfied, {
+            module => $mod,
+            version => $ver,
+            found => $found ? $found->{version} : undef,
+        };
+        return;
+    }
+
+    my $requires = $self->merge_prereqs($found->{meta}{mymeta}{prereqs});
+    for my $module (keys %$requires) {
+        next if $module eq 'perl';
+        $self->_check_satisfies([ $module, $requires->{$module} ], $unsatisfied, $index, $pool);
+    }
+}
+
+sub uninstall {
+    my($self, $lock, $module) = @_;
+
+    my $meta = $lock->{modules}{$module};
+    (my $path_name = $meta->{name}) =~ s!::!/!g;
+
+    my $path = Cwd::realpath($self->{path});
+    my $packlist = "$path/lib/perl5/$Config{archname}/auto/$path_name/.packlist";
+
+    open my $fh, "<", $packlist or die "Couldn't locate .packlist for $meta->{name}";
+    while (<$fh>) {
+        # EUMM merges with site and perl library paths
+        chomp;
+        next unless /^\Q$path\E/;
+        unlink $_ or warn "Couldn't unlink $_: $!";
+    }
+
+    unlink $packlist;
+    if ($meta->{dist}) { # safety guard not to rm -r auto/meta
+        File::Path::rmtree("$self->{path}/lib/perl5/$Config{archname}/.meta/$meta->{dist}");
+    }
 }
 
 1;
-

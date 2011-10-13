@@ -2,34 +2,38 @@ package Carton::CLI;
 use strict;
 use warnings;
 
-use Carton;
-use Carton::Util;
-
 use Cwd;
 use Config;
 use Getopt::Long;
 use Term::ANSIColor qw(colored);
 
+use Carton;
+use Carton::Util;
+use Carton::Error;
 use Carton::Tree;
 use Try::Tiny;
 
+use constant { SUCCESS => 0, INFO => 1, WARN => 2, ERROR => 3 };
+
 our $Colors = {
-    SUCCESS => 'green',
-    INFO    => 'cyan',
-    ERROR   => 'red',
+    SUCCESS, => 'green',
+    WARN,    => 'yellow',
+    INFO,    => 'cyan',
+    ERROR,   => 'red',
 };
 
 sub new {
     my $class = shift;
     bless {
-        path  => 'local',
         color => 1,
         verbose => 0,
-        carton => Carton->new,
     }, $class;
 }
 
-sub carton { $_[0]->{carton} }
+sub carton {
+    my $self = shift;
+    $self->{carton} ||= Carton->new;
+}
 
 sub work_file {
     my($self, $file) = @_;
@@ -60,9 +64,14 @@ sub run {
     my $call = $self->can("cmd_$cmd");
 
     if ($call) {
-        $self->$call(@commands);
+        try {
+            $self->$call(@commands);
+        } catch {
+            /Carton::Error::CommandExit/ and return;
+            die $_;
+        }
     } else {
-        die "Could not find command '$cmd'\n";
+        $self->error("Could not find command '$cmd'\n");
     }
 }
 
@@ -76,7 +85,7 @@ sub commands {
 
 sub cmd_usage {
     my $self = shift;
-    print <<HELP;
+    $self->print(<<HELP);
 Usage: carton <command>
 
 where <command> is one of:
@@ -91,22 +100,24 @@ sub parse_options {
     Getopt::Long::GetOptionsFromArray($args, @spec);
 }
 
-sub print {
-    my($self, $msg, $type) = @_;
-    $msg = colored $msg, $Colors->{$type} if $type && $self->{color};
-    print $msg;
+sub printf {
+    my $self = shift;
+    my $type = pop;
+    my($temp, @args) = @_;
+    $self->print(sprintf($temp, @args), $type);
 }
 
-sub check {
-    my($self, $msg) = @_;
-    $self->print("✓ ", "SUCCESS");
-    $self->print($msg . "\n");
+sub print {
+    my($self, $msg, $type) = @_;
+    $msg = colored $msg, $Colors->{$type} if defined $type && $self->{color};
+    my $fh = $type && $type >= WARN ? *STDERR : *STDOUT;
+    print {$fh} $msg;
 }
 
 sub error {
     my($self, $msg) = @_;
-    $self->print($msg, "ERROR");
-    exit(1);
+    $self->print($msg, ERROR);
+    Carton::Error::CommandExit->throw;
 }
 
 sub cmd_help {
@@ -116,18 +127,18 @@ sub cmd_help {
 }
 
 sub cmd_version {
-    print "carton $Carton::VERSION\n";
+    my $self = shift;
+    $self->print("carton $Carton::VERSION\n");
 }
 
 sub cmd_install {
     my($self, @args) = @_;
 
-    $self->parse_options(\@args, "p|path=s", \$self->{path}, "deployment!" => \$self->{deployment});
+    $self->parse_options(\@args, "p|path=s", sub { $self->carton->{path} = $_[1] }, "deployment!" => \$self->{deployment});
 
     my $lock = $self->find_lock;
 
     $self->carton->configure(
-        path => $self->{path},
         lock => $lock,
         mirror_file => $self->mirror_file, # $lock object?
     );
@@ -149,7 +160,65 @@ sub cmd_install {
         $self->error("Can't locate build file or carton.lock\n");
     }
 
-    $self->print("Complete! Modules were installed into $self->{path}\n", "SUCCESS");
+    $self->printf("Complete! Modules were installed into %s\n", $self->carton->{path}, SUCCESS);
+}
+
+sub cmd_uninstall {
+    my($self, @args) = @_;
+
+    $self->parse_options(\@args, "p|path=s", sub { $self->carton->{path} = $_[1] });
+
+    my $lock = $self->find_lock
+        or $self->error("Can't find carton.lock: Run `carton install`");
+
+    my $index = $self->carton->build_index($lock->{modules});
+
+    my @meta;
+    for my $module (@args) {
+        if (exists $index->{$module}) {
+            push @meta, $index->{$module}{meta};
+        } else {
+            $self->print("Can't locate module $module\n", WARN);
+        }
+    }
+
+    my %root;
+    if ($self->has_build_file) {
+        for my $dep ($self->carton->list_dependencies) {
+            my($mod, $ver) = split /~/, $dep;
+            if (exists $index->{$mod}) {
+                $root{ $index->{$mod}{meta}{name} } = 1;
+            }
+        }
+    }
+
+    # only can uninstall root dependencies
+    my $tree = $self->carton->build_tree($lock->{modules}, \%root);
+    for my $root ($tree->children) {
+        if (grep $_->{name} eq $root->key, @meta) {
+            $tree->remove_child($root);
+        }
+    }
+
+    my @missing = grep !$tree->find_child($_), keys %{$lock->{modules}};
+    for my $module (@missing) {
+        my $meta = $lock->{modules}{$module};
+        $self->print("Uninstalling $meta->{dist}\n");
+        $self->carton->uninstall($lock, $module);
+    }
+
+    for my $meta (@meta) {
+        unless (grep $meta->{name} eq $_, @missing) {
+            $self->print("$meta->{name} is dependent by some other modules. Can't uninstall it.\n", WARN);
+        }
+    }
+
+    $self->carton->update_lock_file($self->lock_file);
+
+    if (@missing) {
+        $self->printf("Complete! Modules and its dependencies were uninstalled from %s\n",
+                      $self->carton->{path}, SUCCESS);
+    }
 }
 
 sub mirror_file {
@@ -166,54 +235,121 @@ sub has_build_file {
     return $file;
 }
 
-*cmd_list = \&cmd_show;
-
 sub cmd_show {
+    my($self, @args) = @_;
+
+    my $lock = $self->find_lock
+        or $self->error("Can't find carton.lock: Run `carton install`\n");
+    my $index = $self->carton->build_index($lock->{modules});
+
+    for my $module (@args) {
+        my $meta = $index->{$module}{meta}
+            or $self->error("Couldn't locate $module in carton.lock\n");
+        $self->print( Carton::Util::to_json($meta) );
+    }
+}
+
+sub cmd_tree {
+    my $self = shift;
+    $self->cmd_list("--tree", @_);
+}
+
+sub cmd_list {
     my($self, @args) = @_;
 
     my $tree_mode;
     $self->parse_options(\@args, "tree!" => \$tree_mode);
 
-    my $lock = $self->lock_data
-        or $self->error("Can't find carton.lock: Run `carton install` to rebuild the spec file.\n");
+    my $lock = $self->find_lock
+        or $self->error("Can't find carton.lock: Run `carton install` to rebuild the lock file.\n");
 
     if ($tree_mode) {
-        $self->carton->walk_down_tree($lock, sub {
+        my $tree = $self->carton->build_tree($lock->{modules});
+        $self->carton->walk_down_tree($tree, sub {
             my($module, $depth) = @_;
-            print "  " x $depth;
-            print "$module->{dist}\n";
+            my $line = " " x $depth . "$module->{dist}\n";
+            $self->print($line);
         });
     } else {
         for my $module (values %{$lock->{modules} || {}}) {
-            printf "$module->{dist}\n";
+            $self->print("$module->{dist}\n");
         }
     }
 }
 
 sub cmd_check {
-    my $self = shift;
+    my($self, @args) = @_;
 
-    $self->check_cpanm_version;
-    # check carton.lock and extlib?
-}
+    my $file = $self->has_build_file
+        or $self->error("Can't find a build file: nothing to check.\n");
 
-sub check_cpanm_version {
-    my $self = shift;
+    $self->parse_options(\@args, "p|path=s", sub { $self->carton->{path} = $_[1] });
 
-    my $version = (`$self->{cpanm} --version` =~ /version (\S+)/)[0];
-    unless ($version && $version >= 1.5) {
-        $self->error("carton needs cpanm version >= 1.5. You have " . ($version || "(not installed)") . "\n");
+    my $lock = $self->carton->build_lock;
+    my @deps = $self->carton->list_dependencies;
+
+    my $res = $self->carton->check_satisfies($lock, \@deps);
+
+    my $ok = 1;
+    if (@{$res->{unsatisfied}}) {
+        $self->print("Following dependencies are not satisfied. Run `carton install` to install them.\n", WARN);
+        for my $dep (@{$res->{unsatisfied}}) {
+            $self->print("$dep->{module} " . ($dep->{version} ? "($dep->{version})" : "") . "\n");
+        }
+        $ok = 0;
     }
-    $self->check("You have cpanm $version");
+
+    if ($res->{superflous}) {
+        $self->printf("Following modules are found in %s but couldn't be tracked from your $file\n",
+                      $self->carton->{path}, WARN);
+        $self->carton->walk_down_tree($res->{superflous}, sub {
+            my($module, $depth) = @_;
+            my $line = "  " x $depth . "$module->{dist}\n";
+            $self->print($line);
+        }, 1);
+        $ok = 0;
+    }
+
+    if ($ok) {
+        $self->printf("Dependencies specified in your $file are satisfied and matches with modules in %s.\n",
+                      $self->carton->{path}, SUCCESS);
+    }
 }
 
 sub cmd_update {
     # "cleanly" update distributions in extlib
     # rebuild the tree, update modules with DFS
+    die <<EOF;
+carton update is not implemented yet.
+
+The command is supposed to update all the dependencies to the latest
+version as if you don't have the current local environment doesn't
+exist.
+
+For now, you can remove the local environment and re-run carton install
+to get the similar functionality.
+
+EOF
+
 }
 
 sub cmd_exec {
-    # setup lib::core::only, -L env, put extlib/bin into PATH and exec script
+    my($self, @args) = @_;
+
+    # allows -Ilib
+    @args = map { /^(-[I])(.+)/ ? ($1,$2) : $_ } @args;
+
+    my $system; # for unit testing
+    my @include;
+    $self->parse_options(\@args, 'I=s@', \@include, "system", \$system);
+
+    my $path = $self->carton->{path};
+    my $lib  = join ",", @include, "$path/lib/perl5", ".";
+
+    local $ENV{PERL5OPT} = "-Mlib::core::only -Mlib=$lib";
+    local $ENV{PATH} = "$path/bin:$ENV{PATH}";
+
+    $system ? system(@args) : exec(@args);
 }
 
 sub find_lock {
@@ -229,11 +365,9 @@ sub find_lock {
 sub lock_data {
     my $self = shift;
 
-    return $self->{lock} if $self->{lock};
-
+    my $lock;
     try {
-        my $lock = Carton::Util::parse_json($self->lock_file);
-        $self->{lock} = $lock;
+        $lock = Carton::Util::load_json($self->lock_file);
     } catch {
         if (/No such file/) {
             $self->error("Can't locate carton.lock\n");
@@ -242,7 +376,7 @@ sub lock_data {
         }
     };
 
-    return $self->{lock};
+    return $lock;
 }
 
 sub lock_file {

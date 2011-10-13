@@ -4,11 +4,42 @@ carton-faq - Frequently Asked Questions
 
 =head1 QUESTIONS
 
+=head2 It looks useful, but what is the use case of this tool?
+
+The particular problem that carton is trying to address is this:
+
+You develop a Perl web application with dozens of CPAN module
+dependencies. You install these modules on your development machine,
+and describe these dependencies in your Makefile.PL or some other text
+format.
+
+Now you get a produciton environment on Cloud PaaS provider or some
+VPS, you install the dependencies using C<cpanm --installdeps .> and
+it will pull all the latest releases from CPAN as of today and
+everything just works.
+
+A few weeks later, your application becomes more popular, and you
+think you need another machine to serve more requests. You set up
+another machine with vanilla perl installation and install the
+dependencies the same way. That will pull the I<latest> releases from
+CPAN I<on that date>, rather than the same as what you have today.
+
+And that is the problem. It's not likely that everything just breaks
+one day, but there's always a chance that one of the dependencies
+breaks an API compatibility, or just uploaded a buggy version to CPAN
+on that particular day.
+
+Carton allows you to I<lock> these dependencies into a version
+controlled system, so that every time you deploy from a checkout, it
+is guaranteed that all the same versions are installed into the local
+environment.
+
 =head2 How is this different from DPAN or CPAN::Mini::Inject?
 
 First of all, if you currently use L<DPAN|MyCPAN::App::DPAN>,
-L<CPAN::Mini::Inject> or any other similar tools successfully, then
-that's totally fine. You don't need to switch to carton.
+L<CPAN::Mini::Inject>, L<Shipwright> or any other similar tools
+successfully, then that's totally fine. You don't need to switch to
+carton.
 
 If you experience difficulties with these tools, or are interested in
 what could be better in carton, keep on reading.
@@ -44,7 +75,7 @@ development mode and deployment mode.
 Carton automatically maintains the L<carton.lock> file, which is meant
 to be version controlled, inside your application directory. You don't
 need a separate database or a directory to maintain tarballs outside
-your application. The C<carton.lock> file can always be generated out
+your application. The I<carton.lock> file can always be generated out
 of the local library path, and carton can reproduce the tree using the
 lock file on other machines.
 

@@ -7,11 +7,19 @@ readme_from('lib/Carton.pod');
 
 configure_requires 'version', 0.77;
 
-requires 'JSON';
-requires 'App::cpanminus', 1.4900;
+requires 'JSON', 2.53;
 requires 'Term::ANSIColor', 1.12;
 requires 'Module::Metadata', 1.000003;
-requires 'Try::Tiny';
+requires 'Try::Tiny', 0.09;
+requires 'parent', 0.223;
+requires 'local::lib', 1.008;
+requires 'Exception::Class', 1.32;
+
+# MYMETA support
+requires 'App::cpanminus', 1.5000;
+requires 'ExtUtils::MakeMaker', 6.59;
+requires 'Module::Build', 0.38;
+requires 'CPAN::Meta', 2.112;
 
 install_script 'bin/carton';
 
@@ -20,6 +28,11 @@ doc_to_pods();
 build_requires 'Test::More', 0.88;
 test_requires 'Test::Requires';
 auto_set_repository();
+
+resources
+    homepage => 'https://github.com/miyagawa/carton',
+    bugtracker => 'https://github.com/miyagawa/carton/issues';
+
 WriteAll;
 
 sub doc_to_pods {

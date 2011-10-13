@@ -20,15 +20,17 @@ sub new {
     return $self;
 }
 
-sub walk_down {
-    my($self, $cb) = @_;
-
-    $cb ||= sub {
+sub dump {
+    my $self = shift;
+    $self->walk_down(sub {
         my($node, $depth) = @_;
         print " " x $depth;
         print $node->key, "\n";
-    };
+    });
+}
 
+sub walk_down {
+    my($self, $cb) = @_;
     $self->_walk_down($cb, undef, 0);
 }
 
@@ -78,7 +80,11 @@ sub remove_child {
 
     my @new;
     for my $child (@{$self->[2]}) {
-        push @new, $child if $rm->key ne $child->key;
+        if ($rm->key eq $child->key) {
+            undef $child;
+        } else {
+            push @new, $child;
+        }
     }
 
     $self->[2] = \@new;
@@ -97,7 +103,9 @@ sub new {
 }
 
 sub finalize {
-    my $self = shift;
+    my($self, $want_root) = @_;
+
+    $want_root ||= {};
 
     my %subtree;
     my @ancestor;
@@ -119,14 +127,37 @@ sub finalize {
     my $up = sub { pop @ancestor };
     $self->_walk_down($down, $up, 0);
 
-    # remove root nodes that are sub-tree of another
+    # normalize: remove root nodes that are sub-tree of another
     for my $child ($self->children) {
         if ($subtree{$child->key}) {
             $self->remove_child($child);
         }
     }
 
+    # Ugh, but if the build file is there, restore the links to sub-tree as a root elements
+    my %curr_root = map { ($_->key => 1) } $self->children;
+    for my $key (keys %$want_root) {
+        my $node = $self->find_child($key) or next;
+        unless ($curr_root{$node->key}) {
+            $self->add_child($node);
+        }
+    }
+
     %cache = ();
+}
+
+sub find_child {
+    my($self, $key) = @_;
+
+    my $child;
+    $self->walk_down(sub {
+        if ($_[0]->key eq $key) {
+            $child = $_[0];
+            return $self->abort;
+        }
+    });
+
+    return $child;
 }
 
 1;
