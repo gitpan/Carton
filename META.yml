@@ -18,6 +18,20 @@ no_index:
     - inc
     - t
     - xt
+provides:
+  Carton:
+    file: lib/Carton.pm
+    version: v0.9.1
+  Carton::CLI:
+    file: lib/Carton/CLI.pm
+  Carton::Error:
+    file: lib/Carton/Error.pm
+  Carton::Tree:
+    file: lib/Carton/Tree.pm
+  Carton::TreeNode:
+    file: lib/Carton/Tree.pm
+  Carton::Util:
+    file: lib/Carton/Util.pm
 requires:
   App::cpanminus: 1.5
   CPAN::Meta: 2.112
@@ -36,4 +50,4 @@ resources:
   homepage: https://github.com/miyagawa/carton
   license: http://dev.perl.org/licenses/
   repository: git://github.com/miyagawa/carton.git
-version: 0.009000
+version: 0.009001
