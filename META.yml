@@ -21,7 +21,7 @@ no_index:
 provides:
   Carton:
     file: lib/Carton.pm
-    version: v0.9.1
+    version: v0.9.2
   Carton::CLI:
     file: lib/Carton/CLI.pm
   Carton::Error:
@@ -50,4 +50,4 @@ resources:
   homepage: https://github.com/miyagawa/carton
   license: http://dev.perl.org/licenses/
   repository: git://github.com/miyagawa/carton.git
-version: 0.009001
+version: v0.9.2
