@@ -1,13 +1,16 @@
 ---
+author:
+  - 'Tatsuhiko Miyagawa'
 build_requires:
-  ExtUtils::MakeMaker: 6.42
+  ExtUtils::MakeMaker: 6.59
   Test::More: 0.88
   Test::Requires: 0
 configure_requires:
-  ExtUtils::MakeMaker: 6.42
+  ExtUtils::MakeMaker: 6.59
   version: 0.77
 distribution_type: module
-generated_by: 'Module::Install version 1.02'
+dynamic_config: 1
+generated_by: 'Module::Install version 1.03'
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -21,7 +24,7 @@ no_index:
 provides:
   Carton:
     file: lib/Carton.pm
-    version: v0.9.2
+    version: v0.9.3
   Carton::CLI:
     file: lib/Carton/CLI.pm
   Carton::Error:
@@ -50,4 +53,4 @@ resources:
   homepage: https://github.com/miyagawa/carton
   license: http://dev.perl.org/licenses/
   repository: git://github.com/miyagawa/carton.git
-version: v0.9.2
+version: v0.9.3

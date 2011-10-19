@@ -8,7 +8,7 @@ use Fcntl qw/:flock :seek/;
 
 use vars qw{$VERSION @ISA $ISCORE};
 BEGIN {
-	$VERSION = '1.02';
+	$VERSION = '1.03';
 	@ISA     = 'Module::Install::Base';
 	$ISCORE  = 1;
 }
@@ -214,12 +214,12 @@ sub write {
 	# Make sure we have a new enough MakeMaker
 	require ExtUtils::MakeMaker;
 
-	if ( $perl_version and $self->_cmp($perl_version, '5.006') >= 0 ) {
+	if ( $perl_version and Module::Install::_cmp($perl_version, '5.006') >= 0 ) {
 		# MakeMaker can complain about module versions that include
 		# an underscore, even though its own version may contain one!
 		# Hence the funny regexp to get rid of it.  See RT #35800
 		# for details.
-		my $v = $ExtUtils::MakeMaker::VERSION =~ /^(\d+\.\d+)/;
+                my($v) = $ExtUtils::MakeMaker::VERSION =~ /^(\d+\.\d+)/;
 		$self->build_requires(     'ExtUtils::MakeMaker' => $v );
 		$self->configure_requires( 'ExtUtils::MakeMaker' => $v );
 	} else {
