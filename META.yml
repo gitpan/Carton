@@ -10,7 +10,7 @@ configure_requires:
   version: 0.77
 distribution_type: module
 dynamic_config: 1
-generated_by: 'Module::Install version 1.03'
+generated_by: 'Module::Install version 1.06'
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -24,7 +24,7 @@ no_index:
 provides:
   Carton:
     file: lib/Carton.pm
-    version: v0.9.3
+    version: v0.9.4
   Carton::CLI:
     file: lib/Carton/CLI.pm
   Carton::Error:
@@ -38,8 +38,13 @@ provides:
 requires:
   App::cpanminus: 1.5
   CPAN::Meta: 2.112
+  Capture::Tiny: 0
+  Dist::Metadata: 0
   Exception::Class: 1.32
   ExtUtils::MakeMaker: 6.59
+  File::chdir: 0
+  Getopt::Long: 2.36
+  IO::Compress::Gzip: 0
   JSON: 2.53
   Module::Build: 0.38
   Module::Metadata: 1.000003
@@ -53,4 +58,4 @@ resources:
   homepage: https://github.com/miyagawa/carton
   license: http://dev.perl.org/licenses/
   repository: git://github.com/miyagawa/carton.git
-version: v0.9.3
+version: v0.9.4

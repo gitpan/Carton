@@ -15,12 +15,19 @@ requires 'Try::Tiny', 0.09;
 requires 'parent', 0.223;
 requires 'local::lib', 1.008;
 requires 'Exception::Class', 1.32;
+requires 'Capture::Tiny';
+requires 'Getopt::Long', 2.36;
 
 # MYMETA support
 requires 'App::cpanminus', 1.5000;
 requires 'ExtUtils::MakeMaker', 6.59;
 requires 'Module::Build', 0.38;
 requires 'CPAN::Meta', 2.112;
+
+# bundle DarkPAN support
+requires 'File::chdir';
+requires 'Dist::Metadata';
+requires 'IO::Compress::Gzip';
 
 install_script 'bin/carton';
 
