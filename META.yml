@@ -24,7 +24,7 @@ no_index:
 provides:
   Carton:
     file: lib/Carton.pm
-    version: v0.9.4
+    version: v0.9_5
   Carton::CLI:
     file: lib/Carton/CLI.pm
   Carton::Error:
@@ -47,6 +47,7 @@ requires:
   IO::Compress::Gzip: 0
   JSON: 2.53
   Module::Build: 0.38
+  Module::CPANfile: 0.9004
   Module::Metadata: 1.000003
   Term::ANSIColor: 1.12
   Try::Tiny: 0.09
@@ -58,4 +59,4 @@ resources:
   homepage: https://github.com/miyagawa/carton
   license: http://dev.perl.org/licenses/
   repository: git://github.com/miyagawa/carton.git
-version: v0.9.4
+version: v0.9_5
