@@ -24,7 +24,7 @@ no_index:
 provides:
   Carton:
     file: lib/Carton.pm
-    version: v0.9_5
+    version: v0.9_6
   Carton::CLI:
     file: lib/Carton/CLI.pm
   Carton::Error:
@@ -37,12 +37,11 @@ provides:
     file: lib/Carton/Util.pm
 requires:
   App::cpanminus: 1.5
-  CPAN::Meta: 2.112
+  CPAN::Meta: 2.120921
+  CPAN::Meta::Requirements: 2.121
   Capture::Tiny: 0
-  Dist::Metadata: 0
   Exception::Class: 1.32
   ExtUtils::MakeMaker: 6.59
-  File::chdir: 0
   Getopt::Long: 2.36
   IO::Compress::Gzip: 0
   JSON: 2.53
@@ -59,4 +58,4 @@ resources:
   homepage: https://github.com/miyagawa/carton
   license: http://dev.perl.org/licenses/
   repository: git://github.com/miyagawa/carton.git
-version: v0.9_5
+version: v0.9_6
