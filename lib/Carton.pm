@@ -3,7 +3,7 @@ package Carton;
 use strict;
 use warnings;
 use 5.008_001;
-use version; our $VERSION = "v0.9_6";
+use version; our $VERSION = "v0.9_7";
 
 use Cwd;
 use Config qw(%Config);
@@ -134,11 +134,17 @@ sub install_conservative {
 
     my $mirror = $self->{mirror} || $DefaultMirror;
 
+    my $is_default_mirror = 0;
+    if ( !ref $mirror ) {
+        $is_default_mirror = $mirror eq $DefaultMirror ? 1 : 0;
+        $mirror = [split /,/, $mirror];
+    }
+
     $self->run_cpanm(
-        "--mirror", $mirror,
+        (map { ("--mirror", $_) } @{$mirror}),
         "--mirror", "http://backpan.perl.org/", # fallback
         "--skip-satisfied",
-        ( $mirror ne $DefaultMirror ? "--mirror-only" : () ),
+        ( $is_default_mirror ? () : "--mirror-only" ),
         ( $self->lock ? ("--mirror-index", $self->{mirror_file}) : () ),
         ( $cascade ? "--cascade-search" : () ),
         @$modules,
