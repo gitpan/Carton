@@ -3,67 +3,62 @@ package Module::Install::CPANfile;
 
 use strict;
 use 5.008_001;
-our $VERSION = '0.04';
+our $VERSION = '0.11';
 
 use Module::CPANfile;
 use base qw(Module::Install::Base);
 
-sub cpanfile {
+sub merge_meta_with_cpanfile {
     my $self = shift;
+
+    require CPAN::Meta;
+
+    my $file = Module::CPANfile->load;
+
+    if ($self->is_admin) {
+        # force generate META.json
+        CPAN::Meta->load_file('META.yml')->save('META.json');
+
+        print "Regenerate META.json and META.yml using cpanfile\n";
+        $file->merge_meta('META.yml');
+        $file->merge_meta('META.json');
+    }
+
+    for my $metafile (grep -e, qw(MYMETA.yml MYMETA.json)) {
+        print "Merging cpanfile prereqs to $metafile\n";
+        $file->merge_meta($metafile);
+    }
+}
+
+sub cpanfile {
+    my($self, %options) = @_;
+
     $self->include("Module::CPANfile");
+    $self->configure_requires("CPAN::Meta");
 
-    my $specs = Module::CPANfile->load->prereq_specs;
+    $self->dynamic_config(0) unless $options{dynamic};
 
-    while (my($phase, $requirements) = each %$specs) {
-        while (my($type, $requirement) = each %$requirements) {
-            if (my $command = $self->command_for($phase, $type)) {
-                while (my($mod, $ver) = each %$requirement) {
-                    $self->$command($mod, $self->_fix_version($ver));
-                }
+    my $write_all = \&::WriteAll;
+
+    *main::WriteAll = sub {
+        $write_all->(@_);
+        $self->merge_meta_with_cpanfile;
+    };
+
+    $self->include("Module::CPANfile");
+    $self->configure_requires("CPAN::Meta");
+
+    if ($self->is_admin) {
+        if (eval { require CPAN::Meta::Check; 1 }) {
+            my $prereqs = Module::CPANfile->load->prereqs;
+            my @err = CPAN::Meta::Check::verify_dependencies($prereqs, [qw/runtime build test develop/], 'requires');
+            for (@err) {
+                warn "Warning: $_\n";
             }
-        }
-    }
-}
-
-sub _fix_version {
-    my($self, $ver) = @_;
-
-    return $ver unless $ver;
-
-    $ver =~ /(?:^|>=?)\s*([\d\.\_]+)/
-      and return $1;
-
-    $ver;
-}
-
-sub command_for {
-    my($self, $phase, $type) = @_;
-
-    if ($type eq 'conflicts') {
-        warn 'conflicts is not supported';
-        return;
-    }
-
-    if ($phase eq 'develop') {
-        if ($INC{"Module/Install/AuthorRequires.pm"}) {
-            return 'author_requires';
-        } elsif ($Module::Install::AUTHOR) {
-            warn "develop phase is ignored unless Module::Install::AuthorRequires is installed.\n";
-            return;
         } else {
-            return;
+            warn "CPAN::Meta::Check is not installed. Skipping dependencies check for the author.\n";
         }
     }
-
-    if ($type eq 'recommends' or $type eq 'suggests') {
-        return 'recommends';
-    }
-
-    if ($phase eq 'runtime') {
-        return 'requires';
-    }
-
-    return "${phase}_requires";
 }
 
 1;
@@ -71,4 +66,4 @@ __END__
 
 =encoding utf-8
 
-#line 154
+#line 149

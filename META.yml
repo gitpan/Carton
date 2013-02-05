@@ -1,4 +1,5 @@
 ---
+abstract: unknown
 author:
   - 'Tatsuhiko Miyagawa'
 build_requires:
@@ -6,11 +7,11 @@ build_requires:
   Test::More: 0.88
   Test::Requires: 0
 configure_requires:
+  CPAN::Meta: 0
   ExtUtils::MakeMaker: 6.59
   version: 0.77
-distribution_type: module
-dynamic_config: 1
-generated_by: 'Module::Install version 1.06'
+dynamic_config: 0
+generated_by: 'Module::Install version 1.06, CPAN::Meta::Converter version 2.120921'
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -24,19 +25,24 @@ no_index:
 provides:
   Carton:
     file: lib/Carton.pm
-    version: v0.9_7
+    version: v0.9_8
   Carton::CLI:
     file: lib/Carton/CLI.pm
+    version: 0
   Carton::Error:
     file: lib/Carton/Error.pm
+    version: 0
   Carton::Tree:
     file: lib/Carton/Tree.pm
+    version: 0
   Carton::TreeNode:
     file: lib/Carton/Tree.pm
+    version: 0
   Carton::Util:
     file: lib/Carton/Util.pm
+    version: 0
 requires:
-  App::cpanminus: 1.5013
+  App::cpanminus: 1.502
   CPAN::Meta: 2.120921
   CPAN::Meta::Requirements: 2.121
   Capture::Tiny: 0
@@ -52,10 +58,10 @@ requires:
   Try::Tiny: 0.09
   local::lib: 1.008
   parent: 0.223
-  perl: 5.8.1
+  perl: v5.8.1
 resources:
   bugtracker: https://github.com/miyagawa/carton/issues
   homepage: https://github.com/miyagawa/carton
   license: http://dev.perl.org/licenses/
   repository: git://github.com/miyagawa/carton.git
-version: v0.9_7
+version: v0.9_8
