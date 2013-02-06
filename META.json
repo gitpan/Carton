@@ -66,7 +66,7 @@
    "provides" : {
       "Carton" : {
          "file" : "lib/Carton.pm",
-         "version" : "v0.9_8"
+         "version" : "v0.9_9"
       },
       "Carton::CLI" : {
          "file" : "lib/Carton/CLI.pm",
@@ -103,5 +103,5 @@
          "url" : "git://github.com/miyagawa/carton.git"
       }
    },
-   "version" : "v0.9_8"
+   "version" : "v0.9_9"
 }
