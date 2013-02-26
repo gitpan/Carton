@@ -43,7 +43,7 @@
       },
       "runtime" : {
          "requires" : {
-            "App::cpanminus" : "1.502",
+            "App::cpanminus" : "1.6",
             "CPAN::Meta" : "2.120921",
             "CPAN::Meta::Requirements" : "2.121",
             "Capture::Tiny" : "0",
@@ -66,7 +66,7 @@
    "provides" : {
       "Carton" : {
          "file" : "lib/Carton.pm",
-         "version" : "v0.9_9"
+         "version" : "v0.9.10"
       },
       "Carton::CLI" : {
          "file" : "lib/Carton/CLI.pm",
@@ -89,7 +89,7 @@
          "version" : "0"
       }
    },
-   "release_status" : "testing",
+   "release_status" : "stable",
    "resources" : {
       "bugtracker" : {
          "web" : "https://github.com/miyagawa/carton/issues"
@@ -103,5 +103,5 @@
          "url" : "git://github.com/miyagawa/carton.git"
       }
    },
-   "version" : "v0.9_9"
+   "version" : "v0.9.10"
 }
