@@ -43,4 +43,4 @@ resources:
   bugtracker: https://github.com/miyagawa/carton/issues
   homepage: https://github.com/miyagawa/carton
   repository: https://github.com/miyagawa/carton.git
-version: v0.9.13
+version: v0.9.14
