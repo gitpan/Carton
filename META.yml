@@ -39,8 +39,9 @@ requires:
   Try::Tiny: 0.09
   local::lib: 1.008
   parent: 0.223
+  perl: v5.8.5
 resources:
   bugtracker: https://github.com/miyagawa/carton/issues
   homepage: https://github.com/miyagawa/carton
   repository: https://github.com/miyagawa/carton.git
-version: v0.9.14
+version: v0.9.15
