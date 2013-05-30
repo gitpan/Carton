@@ -8,9 +8,9 @@ use Getopt::Long;
 use Term::ANSIColor qw(colored);
 
 use Carton;
+use Carton::Lock;
 use Carton::Util;
 use Carton::Error;
-use Carton::Tree;
 use Try::Tiny;
 
 use constant { SUCCESS => 0, INFO => 1, WARN => 2, ERROR => 3 };
@@ -135,25 +135,19 @@ sub cmd_bundle {
     my($self, @args) = @_;
 
     $self->parse_options(\@args, "p|path=s" => sub { $self->carton->{path} = $_[1] });
+    $self->carton->{mirror_file} = $self->mirror_file;
 
     my $lock = $self->find_lock;
-    my $local_mirror = $self->carton->local_mirror;
+    my $cpanfile = $self->find_cpanfile;
 
-    $self->carton->configure(
-        lock => $lock,
-        mirror_file => $self->mirror_file,
-    );
-
-    my $cpanfile = $self->has_cpanfile;
-
-    if ($cpanfile && $lock) {
+    if ($lock) {
         $self->print("Bundling modules using $cpanfile\n");
-        $self->carton->download_from_cpanfile($cpanfile, $local_mirror);
+        $self->carton->bundle($cpanfile, $lock);
     } else {
-        $self->error("Can't locate cpanfile and lock file. Run carton install first\n");
+        $self->error("Can't locate carton.lock file. Run carton install first\n");
     }
 
-    $self->printf("Complete! Modules were bundled into %s\n", $local_mirror, SUCCESS);
+    $self->printf("Complete! Modules were bundled into %s\n", $self->carton->local_cache, SUCCESS);
 }
 
 sub cmd_install {
@@ -166,25 +160,21 @@ sub cmd_install {
         "cached!"     => \$self->{use_local_mirror},
     );
 
+    $self->carton->{mirror_file} = $self->mirror_file;
+
+    if ($self->{use_local_mirror}) {
+        $self->carton->use_local_mirror;
+    }
+
     my $lock = $self->find_lock;
-    my $local_mirror = $self->carton->local_mirror;
+    my $cpanfile = $self->find_cpanfile;
 
-    $self->carton->configure(
-        lock => $lock,
-        mirror_file => $self->mirror_file, # $lock object?
-        ( $self->{use_local_mirror} && -d $local_mirror ? (mirror => $local_mirror) : () ),
-    );
-
-    my $cpanfile = $self->has_cpanfile;
-
-    if (!$cpanfile) {
-        $self->error("Can't locate cpanfile.\n");
-    } elsif ($self->{deployment}) {
+    if ($self->{deployment}) {
         $self->print("Installing modules using $cpanfile (deployment mode)\n");
-        $self->carton->install_from_cpanfile($cpanfile);
+        $self->carton->install($cpanfile, $lock);
     } else {
         $self->print("Installing modules using $cpanfile\n");
-        $self->carton->install_from_cpanfile($cpanfile, 1);
+        $self->carton->install($cpanfile, $lock, 1);
         $self->carton->update_lock_file($self->lock_file);
     }
 
@@ -196,19 +186,12 @@ sub mirror_file {
     return $self->work_file("02packages.details.txt");
 }
 
-sub has_cpanfile {
-    my $self = shift;
-
-    return 'cpanfile' if -e 'cpanfile';
-    return;
-}
-
 sub cmd_show {
     my($self, @args) = @_;
 
     my $lock = $self->find_lock
         or $self->error("Can't find carton.lock: Run `carton install`\n");
-    my $index = $self->carton->build_index($lock->{modules});
+    my $index = $self->carton->build_index($lock);
 
     for my $module (@args) {
         my $meta = $index->{$module}{meta}
@@ -217,39 +200,21 @@ sub cmd_show {
     }
 }
 
-sub cmd_tree {
-    my $self = shift;
-    $self->cmd_list("--tree", @_);
-}
-
 sub cmd_list {
     my($self, @args) = @_;
-
-    my $tree_mode;
-    $self->parse_options(\@args, "tree!" => \$tree_mode);
 
     my $lock = $self->find_lock
         or $self->error("Can't find carton.lock: Run `carton install` to rebuild the lock file.\n");
 
-    if ($tree_mode) {
-        my $tree = $self->carton->build_tree($lock->{modules});
-        $self->carton->walk_down_tree($tree, sub {
-            my($module, $depth) = @_;
-            my $line = " " x $depth . "$module->{dist}\n";
-            $self->print($line);
-        });
-    } else {
-        for my $module (values %{$lock->{modules} || {}}) {
-            $self->print("$module->{dist}\n");
-        }
+    for my $module ($lock->modules) {
+        $self->print("$module->{dist}\n");
     }
 }
 
 sub cmd_check {
     my($self, @args) = @_;
 
-    my $file = $self->has_cpanfile
-        or $self->error("Can't find a build file: nothing to check.\n");
+    my $file = $self->find_cpanfile;
 
     $self->parse_options(\@args, "p|path=s", sub { $self->carton->{path} = $_[1] });
 
@@ -267,17 +232,6 @@ sub cmd_check {
         $ok = 0;
     }
 
-    if ($res->{superflous}) {
-        $self->printf("Following modules are found in %s but couldn't be tracked from your $file\n",
-                      $self->carton->{path}, WARN);
-        $self->carton->walk_down_tree($res->{superflous}, sub {
-            my($module, $depth) = @_;
-            my $line = "  " x $depth . "$module->{dist}\n";
-            $self->print($line);
-        }, 1);
-        $ok = 0;
-    }
-
     if ($ok) {
         $self->printf("Dependencies specified in your $file are satisfied and matches with modules in %s.\n",
                       $self->carton->{path}, SUCCESS);
@@ -286,7 +240,6 @@ sub cmd_check {
 
 sub cmd_update {
     # "cleanly" update distributions in extlib
-    # rebuild the tree, update modules with DFS
     die <<EOF;
 carton update is not implemented yet.
 
@@ -320,31 +273,31 @@ sub cmd_exec {
     $system ? system(@args) : exec(@args);
 }
 
+sub find_cpanfile {
+    my $self = shift;
+
+    if (-e 'cpanfile') {
+        return 'cpanfile';
+    } else {
+        $self->error("Can't locate cpanfile\n");
+    }
+}
+
 sub find_lock {
     my $self = shift;
 
     if (-e $self->lock_file) {
-        return $self->lock_data; # TODO object
+        my $lock;
+        try {
+            $lock = Carton::Lock->from_file($self->lock_file);
+        } catch {
+            $self->error("Can't parse carton.lock: $_\n");
+        };
+
+        return $lock;
     }
 
     return;
-}
-
-sub lock_data {
-    my $self = shift;
-
-    my $lock;
-    try {
-        $lock = Carton::Util::load_json($self->lock_file);
-    } catch {
-        if (/No such file/) {
-            $self->error("Can't locate carton.lock\n");
-        } else {
-            $self->error("Can't parse carton.lock: $_\n");
-        }
-    };
-
-    return $lock;
 }
 
 sub lock_file {

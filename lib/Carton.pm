@@ -3,7 +3,7 @@ package Carton;
 use strict;
 use warnings;
 use 5.008_005;
-use version; our $VERSION = version->declare("v0.9.15");
+use version; our $VERSION = version->declare("v0.9.50");
 
 use Cwd;
 use Config qw(%Config);
@@ -27,21 +27,13 @@ sub new {
     }, $class;
 }
 
-sub configure {
-    my($self, %args) = @_;
-    %{$self} = (%$self, %args);
+sub use_local_mirror {
+    my $self = shift;
+    $self->{mirror} = $self->local_cache;
 }
 
-sub lock { $_[0]->{lock} }
-
-sub local_mirror { File::Spec->rel2abs("$_[0]->{path}/cache") }
-
-sub install_from_cpanfile {
-    my($self, $file, $cascade) = @_;
-
-    my @modules = $self->list_dependencies;
-    $self->install_conservative(\@modules, $cascade)
-        or die "Installing modules failed\n";
+sub local_cache {
+    File::Spec->rel2abs("$_[0]->{path}/cache");
 }
 
 sub list_dependencies {
@@ -60,54 +52,35 @@ sub list_dependencies {
     return map "$_~$hash->{$_}", grep { $_ ne 'perl' } keys %$hash;
 }
 
-sub dedupe_modules {
-    my($self, $modules) = @_;
-
-    my %seen;
-    my @result;
-    for my $spec (reverse @$modules) {
-        my($mod, $ver) = split /~/, $spec;
-        next if $seen{$mod}++;
-        push @result, $spec;
-    }
-
-    return [ reverse @result ];
-}
-
-
-sub download_from_cpanfile {
-    my($self, $cpanfile, $local_mirror) = @_;
+sub bundle {
+    my($self, $cpanfile, $lock) = @_;
 
     my @modules = $self->list_dependencies;
-    my $modules = $self->dedupe_modules(\@modules);
-
-    my $index = $self->build_index($self->lock->{modules});
-    $self->build_mirror_file($index, $self->{mirror_file});
+    $lock->write_index($self->{mirror_file});
 
     my $mirror = $self->{mirror} || $DefaultMirror;
-
+    my $local_cache = $self->local_cache; # because $self->{path} is localized
     local $self->{path} = File::Temp::tempdir(CLEANUP => 1); # ignore installed
 
     $self->run_cpanm(
         "--mirror", $mirror,
         "--mirror", "http://backpan.perl.org/", # fallback
         "--mirror-index", $self->{mirror_file},
-        "--no-skip-satisfied",
+        "--skip-satisfied",
+        "--cascade-search",
         ( $mirror ne $DefaultMirror ? "--mirror-only" : () ),
-        "--scandeps",
-        "--save-dists", $local_mirror,
-        @$modules,
+        "--save-dists", $local_cache,
+        @modules,
     );
 }
 
-sub install_conservative {
-    my($self, $modules, $cascade) = @_;
+sub install {
+    my($self, $file, $lock, $cascade) = @_;
 
-    $modules = $self->dedupe_modules($modules);
+    my @modules = $self->list_dependencies;
 
-    if ($self->lock) {
-        my $index = $self->build_index($self->lock->{modules});
-        $self->build_mirror_file($index, $self->{mirror_file});
+    if ($lock) {
+        $lock->write_index($self->{mirror_file});
     }
 
     my $mirror = $self->{mirror} || $DefaultMirror;
@@ -123,72 +96,18 @@ sub install_conservative {
         "--mirror", "http://backpan.perl.org/", # fallback
         "--skip-satisfied",
         ( $is_default_mirror ? () : "--mirror-only" ),
-        ( $self->lock ? ("--mirror-index", $self->{mirror_file}) : () ),
+        ( $lock ? ("--mirror-index", $self->{mirror_file}) : () ),
         ( $cascade ? "--cascade-search" : () ),
-        @$modules,
-    );
+        @modules,
+    ) or die "Installing modules failed\n";
 }
-
-sub build_mirror_file {
-    my($self, $index, $file) = @_;
-
-    my @packages = $self->build_packages($index);
-
-    my $fh;
-    if ($file =~ /\.gz$/i) {
-        require IO::Compress::Gzip;
-        $fh = IO::Compress::Gzip->new($file) or die $IO::Compress::Gzip::GzipError;
-    } else {
-        open $fh, ">", $file or die $!;
-    }
-
-    print $fh <<EOF;
-File:         02packages.details.txt
-URL:          http://www.perl.com/CPAN/modules/02packages.details.txt
-Description:  Package names found in carton.lock
-Columns:      package name, version, path
-Intended-For: Automated fetch routines, namespace documentation.
-Written-By:   Carton $Carton::VERSION
-Line-Count:   @{[ scalar(@packages) ]}
-Last-Updated: @{[ scalar localtime ]}
-
-EOF
-    for my $p (@packages) {
-        print $fh sprintf "%s %s  %s\n", pad($p->[0], 32), pad($p->[1] || 'undef', 10, 1), $p->[2];
-    }
-
-    return $file;
-}
-
-sub pad {
-    my($str, $len, $left) = @_;
-
-    my $howmany = $len - length($str);
-    return $str if $howmany <= 0;
-
-    my $pad = " " x $howmany;
-    return $left ? "$pad$str" : "$str$pad";
-}
-
-sub build_packages {
-    my($self, $index) = @_;
-
-    my @packages;
-    for my $package (sort keys %$index) {
-        my $module = $index->{$package};
-        push @packages, [ $package, $module->{version}, $module->{meta}{pathname} ];
-    }
-
-    return @packages;
-}
-
 
 sub build_index {
-    my($self, $modules) = @_;
+    my($self, $lock) = @_;
 
     my $index;
 
-    while (my($name, $metadata) = each %$modules) {
+    while (my($name, $metadata) = each %{$lock->{modules}}) {
         for my $mod (keys %{$metadata->{provides}}) {
             $index->{$mod} = { %{$metadata->{provides}{$mod}}, meta => $metadata };
         }
@@ -209,55 +128,6 @@ sub is_core {
     return 1 unless $want_ver;
     return version->new($core_ver) >= version->new($want_ver);
 };
-
-sub walk_down_tree {
-    my($self, $tree, $cb, $no_warn) = @_;
-
-    my %seen;
-    $tree->walk_down(sub {
-        my($node, $depth, $parent) = @_;
-        return $tree->abort if $seen{$node->key}++;
-
-        if ($node->metadata->{dist}) {
-            $cb->($node->metadata, $depth);
-        } elsif (!$self->is_core($node->key, 0) && !$no_warn) {
-            warn "Couldn't find ", $node->key, "\n";
-        }
-    });
-}
-
-sub build_tree {
-    my($self, $modules, $root) = @_;
-
-    my $idx  = $self->build_index($modules);
-    my $pool = { %$modules }; # copy
-
-    my $tree = Carton::Tree->new;
-
-    while (my $pick = (keys %$pool)[0]) {
-        $self->_build_tree($pick, $tree, $tree, $pool, $idx);
-    }
-
-    $tree->finalize($root);
-
-    return $tree;
-}
-
-sub _build_tree {
-    my($self, $elem, $tree, $curr_node, $pool, $idx) = @_;
-
-    if (my $cached = Carton::TreeNode->cached($elem)) {
-        $curr_node->add_child($cached);
-        return;
-    }
-
-    my $node = Carton::TreeNode->new($elem, $pool);
-    $curr_node->add_child($node);
-
-    for my $child ( $self->build_deps($node->metadata, $idx) ) {
-        $self->_build_tree($child, $tree, $node, $pool, $idx);
-    }
-}
 
 sub merge_prereqs {
     my($self, $prereqs) = @_;
@@ -288,18 +158,6 @@ sub build_deps {
     return @deps;
 }
 
-sub run_cpanm_output {
-    my($self, @args) = @_;
-
-    my $deps = capture {
-        local $ENV{PERL_CPANM_OPT};
-        system "cpanm", "--quiet", "-L", $self->{path}, @args;
-    };
-    my @deps = split $/, $deps;
-
-    return @deps;
-}
-
 sub run_cpanm {
     my($self, @args) = @_;
     local $ENV{PERL_CPANM_OPT};
@@ -310,7 +168,7 @@ sub update_lock_file {
     my($self, $file) = @_;
 
     my $lock = $self->build_lock;
-    Carton::Util::dump_json($lock, $file);
+    Carton::Lock->new($lock)->write($file);
 
     return 1;
 }
@@ -352,7 +210,7 @@ sub check_satisfies {
     my($self, $lock, $deps) = @_;
 
     my @unsatisfied;
-    my $index = $self->build_index($lock->{modules});
+    my $index = $self->build_index($lock);
     my %pool = %{$lock->{modules}}; # copy
 
     my @root = map { [ split /~/, $_, 2 ] } @$deps;
@@ -361,11 +219,8 @@ sub check_satisfies {
         $self->_check_satisfies($dep, \@unsatisfied, $index, \%pool);
     }
 
-    my $tree = keys %pool ? $self->build_tree(\%pool) : undef;
-
     return {
         unsatisfied => \@unsatisfied,
-        superflous  => $tree,
     };
 }
 
@@ -394,29 +249,6 @@ sub _check_satisfies {
     for my $module (keys %$requires) {
         next if $module eq 'perl';
         $self->_check_satisfies([ $module, $requires->{$module} ], $unsatisfied, $index, $pool);
-    }
-}
-
-sub uninstall {
-    my($self, $lock, $module) = @_;
-
-    my $meta = $lock->{modules}{$module};
-    (my $path_name = $meta->{name}) =~ s!::!/!g;
-
-    my $path = Cwd::realpath($self->{path});
-    my $packlist = "$path/lib/perl5/$Config{archname}/auto/$path_name/.packlist";
-
-    open my $fh, "<", $packlist or die "Couldn't locate .packlist for $meta->{name}";
-    while (<$fh>) {
-        # EUMM merges with site and perl library paths
-        chomp;
-        next unless /^\Q$path\E/;
-        unlink $_ or warn "Couldn't unlink $_: $!";
-    }
-
-    unlink $packlist;
-    if ($meta->{dist}) { # safety guard not to rm -r auto/meta
-        File::Path::rmtree("$self->{path}/lib/perl5/$Config{archname}/.meta/$meta->{dist}");
     }
 }
 
