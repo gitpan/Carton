@@ -26,11 +26,9 @@ requires:
   App::cpanminus: 1.6
   CPAN::Meta: 2.120921
   CPAN::Meta::Requirements: 2.121
-  Capture::Tiny: 0
   Exception::Class: 1.32
   ExtUtils::MakeMaker: 6.59
   Getopt::Long: 2.36
-  IO::Compress::Gzip: 0
   JSON: 2.53
   Module::Build: 0.38
   Module::CPANfile: 0.9031
@@ -44,7 +42,7 @@ resources:
   bugtracker: https://github.com/miyagawa/carton/issues
   homepage: https://github.com/miyagawa/carton
   repository: https://github.com/miyagawa/carton.git
-version: v0.9.50
+version: v0.9.51
 x_contributors:
   - 'Christian Walde <walde.christian@googlemail.com>'
   - 'David Golden <dagolden@cpan.org>'

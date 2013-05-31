@@ -4,7 +4,6 @@ LICENSE
 MANIFEST
 META.json
 META.yml
-Makefile.PL
 README
 cpanfile
 dist.ini
@@ -28,6 +27,7 @@ xt/CLI.pm
 xt/cli/bundle.t
 xt/cli/check.t
 xt/cli/exec.t
+xt/cli/freeze.t
 xt/cli/json_pp.t
 xt/cli/mirror.t
 xt/cli/mirror_multi.t
