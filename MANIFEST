@@ -8,7 +8,9 @@ README
 cpanfile
 dist.ini
 lib/Carton.pm
+lib/Carton/Builder.pm
 lib/Carton/CLI.pm
+lib/Carton/Dependency.pm
 lib/Carton/Doc/Check.pod
 lib/Carton/Doc/Exec.pod
 lib/Carton/Doc/FAQ.pod
@@ -19,6 +21,7 @@ lib/Carton/Doc/Version.pod
 lib/Carton/Error.pm
 lib/Carton/Index.pm
 lib/Carton/Lock.pm
+lib/Carton/Mirror.pm
 lib/Carton/Package.pm
 lib/Carton/Util.pm
 script/carton
