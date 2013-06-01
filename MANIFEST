@@ -28,6 +28,7 @@ xt/cli/bundle.t
 xt/cli/check.t
 xt/cli/exec.t
 xt/cli/freeze.t
+xt/cli/help.t
 xt/cli/json_pp.t
 xt/cli/mirror.t
 xt/cli/mirror_multi.t

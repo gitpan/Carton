@@ -3,9 +3,8 @@ package Carton;
 use strict;
 use warnings;
 use 5.008_005;
-use version; our $VERSION = version->declare("v0.9.51");
+use version; our $VERSION = version->declare("v0.9.52");
 
-use Cwd;
 use Config qw(%Config);
 use Carton::Util;
 use CPAN::Meta;
@@ -26,93 +25,59 @@ sub new {
     }, $class;
 }
 
-sub use_local_mirror {
-    my $self = shift;
-    $self->{mirror} = $self->local_cache;
-}
-
 sub local_cache {
-    File::Spec->rel2abs("$_[0]->{path}/cache");
+    File::Spec->rel2abs("vendor/cache");
 }
 
-sub list_dependencies {
+sub effective_mirrors {
+    my($self, $cached) = @_;
+
+    # push default CPAN mirror always, as a fallback
+    my @mirrors;
+    push @mirrors, ($cached ? $self->local_cache : $self->{mirror});
+    push @mirrors, $DefaultMirror if $self->use_darkpan;
+    push @mirrors, 'http://backpan.perl.org/';
+
+    @mirrors;
+}
+
+sub use_darkpan {
     my $self = shift;
-
-    my $cpanfile = Module::CPANfile->load;
-    my $prereq = $cpanfile->prereq;
-
-    my $reqs = CPAN::Meta::Requirements->new;
-    $reqs->add_requirements($prereq->requirements_for($_, 'requires'))
-        for qw( configure build runtime test );
-
-    my $hash = $reqs->as_string_hash;
-    # TODO refactor to not rely on string representation
-    # TODO actually check 'perl' version
-    return map "$_~$hash->{$_}", grep { $_ ne 'perl' } keys %$hash;
+    $self->{mirror} ne $DefaultMirror;
 }
 
 sub bundle {
     my($self, $cpanfile, $lock) = @_;
 
-    my @modules = $self->list_dependencies;
     $lock->write_index($self->{mirror_file});
 
-    my $mirror = $self->{mirror} || $DefaultMirror;
-    my $local_cache = $self->local_cache; # because $self->{path} is localized
     local $self->{path} = File::Temp::tempdir(CLEANUP => 1); # ignore installed
 
     $self->run_cpanm(
-        "--mirror", $mirror,
-        "--mirror", "http://backpan.perl.org/", # fallback
+        (map { ("--mirror", $_) } $self->effective_mirrors),
         "--mirror-index", $self->{mirror_file},
         "--skip-satisfied",
-        "--cascade-search",
-        ( $mirror ne $DefaultMirror ? "--mirror-only" : () ),
-        "--save-dists", $local_cache,
-        @modules,
+        "--save-dists", $self->local_cache,
+        "--installdeps", ".",
     );
 }
 
 sub install {
-    my($self, $file, $lock, $cascade) = @_;
+    my($self, $file, $lock, $cascade, $cached) = @_;
 
-    my @modules = $self->list_dependencies;
-
+    # TODO merge CPANfile git to mirror even if lock doesn't exist
     if ($lock) {
         $lock->write_index($self->{mirror_file});
     }
 
-    my $mirror = $self->{mirror} || $DefaultMirror;
-
-    my $is_default_mirror = 0;
-    if ( !ref $mirror ) {
-        $is_default_mirror = $mirror eq $DefaultMirror ? 1 : 0;
-        $mirror = [split /,/, $mirror];
-    }
-
     $self->run_cpanm(
-        (map { ("--mirror", $_) } @{$mirror}),
-        "--mirror", "http://backpan.perl.org/", # fallback
+        (map { ("--mirror", $_) } $self->effective_mirrors($cached)),
         "--skip-satisfied",
-        ( $is_default_mirror ? () : "--mirror-only" ),
         ( $lock ? ("--mirror-index", $self->{mirror_file}) : () ),
         ( $cascade ? "--cascade-search" : () ),
-        @modules,
+        ( $self->use_darkpan ? "--mirror-only" : () ),
+        "--installdeps", ".",
     ) or die "Installing modules failed\n";
-}
-
-sub build_index {
-    my($self, $lock) = @_;
-
-    my $index;
-
-    while (my($name, $metadata) = each %{$lock->{modules}}) {
-        for my $mod (keys %{$metadata->{provides}}) {
-            $index->{$mod} = { %{$metadata->{provides}{$mod}}, meta => $metadata };
-        }
-    }
-
-    return $index;
 }
 
 sub is_core {
@@ -127,35 +92,6 @@ sub is_core {
     return 1 unless $want_ver;
     return version->new($core_ver) >= version->new($want_ver);
 };
-
-sub merge_prereqs {
-    my($self, $prereqs) = @_;
-
-    my %requires;
-    for my $phase (qw( configure build test runtime )) {
-        %requires = (%requires, %{$prereqs->{$phase}{requires} || {}});
-    }
-
-    return \%requires;
-}
-
-sub build_deps {
-    my($self, $meta, $idx) = @_;
-
-    my $requires = $self->merge_prereqs($meta->{mymeta}{prereqs});
-
-    my @deps;
-    for my $module (keys %$requires) {
-        next if $module eq 'perl';
-        if (exists $idx->{$module}) {
-            push @deps, $idx->{$module}{meta}{name};
-        } else {
-            push @deps, $module;
-        }
-    }
-
-    return @deps;
-}
 
 sub run_cpanm {
     my($self, @args) = @_;
@@ -203,52 +139,6 @@ sub find_installs {
         my $module = Carton::Util::load_json($_->[0]);
         my $mymeta = -f $_->[1] ? CPAN::Meta->load_file($_->[1])->as_struct({ version => "2" }) : {};
         ($module->{name} => { %$module, mymeta => $mymeta }) } @installs;
-}
-
-sub check_satisfies {
-    my($self, $lock, $deps) = @_;
-
-    my @unsatisfied;
-    my $index = $self->build_index($lock);
-    my %pool = %{$lock->{modules}}; # copy
-
-    my @root = map { [ split /~/, $_, 2 ] } @$deps;
-
-    for my $dep (@root) {
-        $self->_check_satisfies($dep, \@unsatisfied, $index, \%pool);
-    }
-
-    return {
-        unsatisfied => \@unsatisfied,
-    };
-}
-
-sub _check_satisfies {
-    my($self, $dep, $unsatisfied, $index, $pool) = @_;
-
-    my($mod, $ver) = @$dep;
-
-    my $found = $index->{$mod};
-    if ($found) {
-        delete $pool->{$found->{meta}{name}};
-    } elsif ($self->is_core($mod, $ver)) {
-        return;
-    }
-
-    unless ($found and (!$ver or version->new($found->{version}) >= version->new($ver))) {
-        push @$unsatisfied, {
-            module => $mod,
-            version => $ver,
-            found => $found ? $found->{version} : undef,
-        };
-        return;
-    }
-
-    my $requires = $self->merge_prereqs($found->{meta}{mymeta}{prereqs});
-    for my $module (keys %$requires) {
-        next if $module eq 'perl';
-        $self->_check_satisfies([ $module, $requires->{$module} ], $unsatisfied, $index, $pool);
-    }
 }
 
 1;
