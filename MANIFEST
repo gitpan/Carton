@@ -29,12 +29,12 @@ t/release-pod-syntax.t
 xt/CLI.pm
 xt/cli/bundle.t
 xt/cli/check.t
+xt/cli/deployment.t
 xt/cli/exec.t
 xt/cli/freeze.t
 xt/cli/help.t
 xt/cli/json_pp.t
 xt/cli/mirror.t
-xt/cli/mirror_multi.t
 xt/cli/no_cpanfile.t
 xt/cli/perl.t
 xt/cli/test_deps.t

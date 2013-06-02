@@ -7,50 +7,61 @@ use Config;
 use Getopt::Long;
 
 use Carton;
+use Carton::Builder;
+use Carton::Mirror;
 use Carton::Lock;
 use Carton::Util;
 use Carton::Error;
+use Scalar::Util;
 use Try::Tiny;
+use Moo;
 
 use constant { SUCCESS => 0, INFO => 1, WARN => 2, ERROR => 3 };
 
 our $UseSystem = 0; # 1 for unit testing
 
-sub new {
-    my $class = shift;
-    bless {
-        verbose => 0,
-    }, $class;
-}
+has verbose => (is => 'rw');
+has carton  => (is => 'lazy');
+has workdir => (is => 'lazy');
+has mirror  => (is => 'rw', builder => 1,
+                coerce => sub { Carton::Mirror->new($_[0]) });
 
-sub carton {
+sub _build_workdir {
     my $self = shift;
-    $self->{carton} ||= Carton->new;
+    $ENV{PERL_CARTON_HOME} || (Cwd::cwd() . "/.carton");
 }
 
-sub work_file {
-    my($self, $file) = @_;
-    return "$self->{work_dir}/$file";
+sub _build_mirror {
+    my $self = shift;
+    $ENV{PERL_CARTON_MIRROR} || $Carton::Mirror::DefaultMirror;
+}
+
+sub install_path {
+    $ENV{PERL_CARTON_PATH} || File::Spec->rel2abs('local');
+}
+
+sub vendor_cache {
+    File::Spec->rel2abs("vendor/cache");
 }
 
 sub run {
     my($self, @args) = @_;
 
-    $self->{work_dir} = $ENV{PERL_CARTON_HOME} || (Cwd::cwd() . "/.carton");
-    mkdir $self->{work_dir}, 0777 unless -e $self->{work_dir};
+    my $dir = $self->workdir;
+    mkdir $dir, 0777 unless -e $dir;
 
-    local @ARGV = @args;
     my @commands;
     my $p = Getopt::Long::Parser->new(
         config => [ "no_ignore_case", "pass_through" ],
     );
-    $p->getoptions(
+    $p->getoptionsfromarray(
+        \@args,
         "h|help"    => sub { unshift @commands, 'help' },
         "v|version" => sub { unshift @commands, 'version' },
-        "verbose!"  => \$self->{verbose},
+        "verbose!"  => sub { $self->verbose($_[1]) },
     );
 
-    push @commands, @ARGV;
+    push @commands, @args;
 
     my $cmd = shift @commands || 'install';
     my $call = $self->can("cmd_$cmd");
@@ -89,7 +100,10 @@ HELP
 
 sub parse_options {
     my($self, $args, @spec) = @_;
-    Getopt::Long::GetOptionsFromArray($args, @spec);
+    my $p = Getopt::Long::Parser->new(
+        config => [ "no_auto_abbrev", "no_ignore_case" ],
+    );
+    $p->getoptionsfromarray($args, @spec);
 }
 
 sub parse_options_pass_through {
@@ -137,52 +151,74 @@ sub cmd_version {
 sub cmd_bundle {
     my($self, @args) = @_;
 
-    $self->parse_options(\@args, "p|path=s" => sub { $self->carton->{path} = $_[1] });
-    $self->carton->{mirror_file} = $self->mirror_file;
-
     my $lock = $self->find_lock;
     my $cpanfile = $self->find_cpanfile;
 
     if ($lock) {
         $self->print("Bundling modules using $cpanfile\n");
-        $self->carton->bundle($cpanfile, $lock);
+
+        my $index = $self->index_file;
+        $lock->write_index($index);
+
+        my $builder = Carton::Builder->new(
+            mirror => $self->mirror,
+            index  => $index,
+        );
+        $builder->bundle($self->vendor_cache);
     } else {
         $self->error("Can't locate carton.lock file. Run carton install first\n");
     }
 
-    $self->printf("Complete! Modules were bundled into %s\n", $self->carton->local_cache, SUCCESS);
+    $self->printf("Complete! Modules were bundled into %s\n", $self->vendor_cache, SUCCESS);
 }
 
 sub cmd_install {
     my($self, @args) = @_;
 
+    my $path = $self->install_path;
+
     $self->parse_options(
         \@args,
-        "p|path=s"    => sub { $self->carton->{path} = $_[1] },
+        "p|path=s"    => \$path,
         "deployment!" => \my $deployment,
         "cached!"     => \my $cached,
     );
 
-    $self->carton->{mirror_file} = $self->mirror_file;
-
     my $lock = $self->find_lock;
     my $cpanfile = $self->find_cpanfile;
 
+    my $builder = Carton::Builder->new(
+        cascade => 1,
+        mirror => $self->mirror,
+    );
+
     if ($deployment) {
+        unless ($lock) {
+            $self->error("--deployment requires carton.lock: Run `carton install` and make sure carton.lock is checked into your version control.\n"); # TODO test
+        }
         $self->print("Installing modules using $cpanfile (deployment mode)\n");
-        $self->carton->install($cpanfile, $lock, 0, $cached);
+        $builder->cascade(0);
     } else {
         $self->print("Installing modules using $cpanfile\n");
-        $self->carton->install($cpanfile, $lock, 1, $cached);
-        $self->carton->update_lock_file($self->lock_file);
     }
 
-    $self->printf("Complete! Modules were installed into %s\n", $self->carton->{path}, SUCCESS);
-}
+    # TODO merge CPANfile git to mirror even if lock doesn't exist
+    if ($lock) {
+        $lock->write_index($self->index_file);
+        $builder->index($self->index_file);
+    }
 
-sub mirror_file {
-    my $self = shift;
-    return $self->work_file("02packages.details.txt");
+    if ($cached) {
+        $builder->mirror(Carton::Mirror->new($self->vendor_cache));
+    }
+
+    $builder->install($path);
+
+    unless ($deployment) {
+        Carton::Lock->build_from_local($path)->write($self->lock_file);
+    }
+
+    $self->print("Complete! Modules were installed into $path\n", SUCCESS);
 }
 
 sub cmd_show {
@@ -241,13 +277,11 @@ sub cmd_exec {
     # allows -Ilib
     @args = map { /^(-[I])(.+)/ ? ($1,$2) : $_ } @args;
 
-    my @include;
-    $self->parse_options_pass_through(\@args, 'I=s@', \@include);
+    $self->parse_options_pass_through(\@args, 'I=s@', sub { die "exec -Ilib is deprecated.\n" });
 
-    my $path = $self->carton->{path};
-    my $lib  = join ",", @include, "$path/lib/perl5", ".";
-
-    local $ENV{PERL5OPT} = "-Mlib::core::only -Mlib=$lib";
+    # PERL5LIB takes care of arch
+    my $path = $self->install_path;
+    local $ENV{PERL5LIB} = "$path/lib/perl5";
     local $ENV{PATH} = "$path/bin:$ENV{PATH}";
 
     $UseSystem ? system(@args) : exec(@args);
@@ -285,5 +319,14 @@ sub lock_file {
     return 'carton.lock';
 }
 
+sub work_file {
+    my($self, $file) = @_;
+    return join "/", $self->workdir, $file;
+}
+
+sub index_file {
+    my $self = shift;
+    $self->work_file("02packages.details.txt");
+}
 
 1;
