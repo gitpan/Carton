@@ -16,6 +16,9 @@ use Scalar::Util;
 use Try::Tiny;
 use Moo;
 
+use Module::CPANfile;
+use CPAN::Meta::Requirements;
+
 use constant { SUCCESS => 0, INFO => 1, WARN => 2, ERROR => 3 };
 
 our $UseSystem = 0; # 1 for unit testing
@@ -228,20 +231,61 @@ sub cmd_show {
         or $self->error("Can't find carton.lock: Run `carton install`\n");
 
     for my $module (@args) {
-        my $meta = $lock->find($module)
+        my $dependency = $lock->find($module)
             or $self->error("Couldn't locate $module in carton.lock\n");
-        $self->print( Carton::Util::to_json($meta) );
+        $self->print( $dependency->dist . "\n" );
     }
 }
 
 sub cmd_list {
     my($self, @args) = @_;
 
+    my $format = 'dist';
+
+    $self->parse_options(
+        \@args,
+        "distfile" => sub { $format = 'distfile' },
+    );
+
     my $lock = $self->find_lock
         or $self->error("Can't find carton.lock: Run `carton install` to rebuild the lock file.\n");
 
     for my $dependency ($lock->dependencies) {
-        $self->print($dependency->distname . "\n");
+        $self->print($dependency->$format . "\n");
+    }
+}
+
+sub cmd_tree {
+    my($self, @args) = @_;
+
+    my $lock = $self->find_lock
+      or $self->error("Can't find carton.lock: Run `carton install` to rebuild the lock file.\n");
+
+    my $cpanfile = Module::CPANfile->load($self->find_cpanfile);
+    my $prereqs = $cpanfile->prereqs;
+
+    my $level = 0;
+    $self->dump_tree($lock, undef, $prereqs, $level);
+}
+
+sub dump_tree {
+    my($self, $lock, $name, $prereqs, $level) = @_;
+
+    my $req = CPAN::Meta::Requirements->new;
+    $req->add_requirements($prereqs->requirements_for($_, 'requires'))
+      for qw( configure build runtime test);
+
+    if ($name) {
+        $self->print( (" " x ($level - 1)) . "$name\n" );
+    }
+
+    my $requirements = $req->as_string_hash;
+    while (my($module, $version) = each %$requirements) {
+        if (my $dependency = $lock->find($module)) {
+            $self->dump_tree($lock, $dependency->dist, $dependency->prereqs, $level + 1);
+        } else {
+            # TODO: probably core, what if otherwise?
+        }
     }
 }
 
