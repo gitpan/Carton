@@ -2,9 +2,13 @@ package Carton::CLI;
 use strict;
 use warnings;
 
-use Cwd;
 use Config;
 use Getopt::Long;
+use Module::CPANfile;
+use Path::Tiny;
+use Try::Tiny;
+use Moo;
+use Module::CoreList;
 
 use Carton;
 use Carton::Builder;
@@ -12,12 +16,7 @@ use Carton::Mirror;
 use Carton::Lock;
 use Carton::Util;
 use Carton::Error;
-use Scalar::Util;
-use Try::Tiny;
-use Moo;
-
-use Module::CPANfile;
-use CPAN::Meta::Requirements;
+use Carton::Requirements;
 
 use constant { SUCCESS => 0, INFO => 1, WARN => 2, ERROR => 3 };
 
@@ -25,14 +24,8 @@ our $UseSystem = 0; # 1 for unit testing
 
 has verbose => (is => 'rw');
 has carton  => (is => 'lazy');
-has workdir => (is => 'lazy');
 has mirror  => (is => 'rw', builder => 1,
                 coerce => sub { Carton::Mirror->new($_[0]) });
-
-sub _build_workdir {
-    my $self = shift;
-    $ENV{PERL_CARTON_HOME} || (Cwd::cwd() . "/.carton");
-}
 
 sub _build_mirror {
     my $self = shift;
@@ -40,18 +33,22 @@ sub _build_mirror {
 }
 
 sub install_path {
-    $ENV{PERL_CARTON_PATH} || File::Spec->rel2abs('local');
+    Path::Tiny->new($ENV{PERL_CARTON_PATH} || 'local')->absolute;
+}
+
+sub work_file {
+    my($self, $file) = @_;
+    my $wf = $self->install_path->child($file);
+    $wf->parent->mkpath;
+    $wf;
 }
 
 sub vendor_cache {
-    File::Spec->rel2abs("vendor/cache");
+    Path::Tiny->new("vendor/cache")->absolute;
 }
 
 sub run {
     my($self, @args) = @_;
-
-    my $dir = $self->workdir;
-    mkdir $dir, 0777 unless -e $dir;
 
     my @commands;
     my $p = Getopt::Long::Parser->new(
@@ -69,16 +66,17 @@ sub run {
     my $cmd = shift @commands || 'install';
     my $call = $self->can("cmd_$cmd");
 
-    if ($call) {
-        try {
-            $self->$call(@commands);
-        } catch {
-            /Carton::Error::CommandExit/ and return;
-            die $_;
-        }
-    } else {
-        $self->error("Could not find command '$cmd'\n");
-    }
+    my $code = try {
+        $self->error("Could not find command '$cmd'\n")
+            unless $call;
+        $self->$call(@commands);
+        return 0;
+    } catch {
+        ref =~ /Carton::Error::CommandExit/ and return 255;
+        die $_;
+    };
+
+    return $code;
 }
 
 sub commands {
@@ -160,14 +158,10 @@ sub cmd_bundle {
     if ($lock) {
         $self->print("Bundling modules using $cpanfile\n");
 
-        my $index = $self->index_file;
-        $lock->write_index($index);
-
         my $builder = Carton::Builder->new(
             mirror => $self->mirror,
-            index  => $index,
         );
-        $builder->bundle($self->vendor_cache);
+        $builder->bundle($self->install_path, $self->vendor_cache, $lock);
     } else {
         $self->error("Can't locate carton.lock file. Run carton install first\n");
     }
@@ -188,6 +182,11 @@ sub cmd_install {
     );
 
     my $lock = $self->find_lock;
+
+    if ($deployment && !$lock) {
+        $self->error("--deployment requires carton.lock: Run `carton install` and make sure carton.lock is checked into your version control.\n");
+    }
+
     my $cpanfile = $self->find_cpanfile;
 
     my $builder = Carton::Builder->new(
@@ -196,9 +195,6 @@ sub cmd_install {
     );
 
     if ($deployment) {
-        unless ($lock) {
-            $self->error("--deployment requires carton.lock: Run `carton install` and make sure carton.lock is checked into your version control.\n"); # TODO test
-        }
         $self->print("Installing modules using $cpanfile (deployment mode)\n");
         $builder->cascade(0);
     } else {
@@ -218,7 +214,8 @@ sub cmd_install {
     $builder->install($path);
 
     unless ($deployment) {
-        Carton::Lock->build_from_local($path)->write($self->lock_file);
+        my $prereqs = Module::CPANfile->load($cpanfile)->prereqs;
+        Carton::Lock->build_from_local($path, $prereqs)->write($self->lock_file);
     }
 
     $self->print("Complete! Modules were installed into $path\n", SUCCESS);
@@ -231,9 +228,9 @@ sub cmd_show {
         or $self->error("Can't find carton.lock: Run `carton install`\n");
 
     for my $module (@args) {
-        my $dependency = $lock->find($module)
+        my $dist = $lock->find($module)
             or $self->error("Couldn't locate $module in carton.lock\n");
-        $self->print( $dependency->dist . "\n" );
+        $self->print( $dist->dist . "\n" );
     }
 }
 
@@ -250,8 +247,8 @@ sub cmd_list {
     my $lock = $self->find_lock
         or $self->error("Can't find carton.lock: Run `carton install` to rebuild the lock file.\n");
 
-    for my $dependency ($lock->dependencies) {
-        $self->print($dependency->$format . "\n");
+    for my $dist ($lock->distributions) {
+        $self->print($dist->$format . "\n");
     }
 }
 
@@ -262,59 +259,91 @@ sub cmd_tree {
       or $self->error("Can't find carton.lock: Run `carton install` to rebuild the lock file.\n");
 
     my $cpanfile = Module::CPANfile->load($self->find_cpanfile);
-    my $prereqs = $cpanfile->prereqs;
+    my $requirements = Carton::Requirements->new(lock => $lock, prereqs => $cpanfile->prereqs);
 
-    my $dumper = $self->_make_dumper($lock);
-    $dumper->(undef, $prereqs, 0, {});
-}
-
-sub _make_dumper {
-    my($self, $lock) = @_;
-
-    my $dumper; $dumper = sub {
-        my($name, $prereqs, $level, $seen) = @_;
-
-        my $req = CPAN::Meta::Requirements->new;
-        $req->add_requirements($prereqs->requirements_for($_, 'requires'))
-          for qw( configure build runtime test);
-
-        if ($name) {
-            $self->print( (" " x ($level - 1)) . "$name\n" );
-        }
-
-        my $requirements = $req->as_string_hash;
-        while (my($module, $version) = each %$requirements) {
-            if (my $dependency = $lock->find($module)) {
-                next if $seen->{$dependency->dist}++;
-                $dumper->($dependency->dist, $dependency->prereqs, $level + 1, $seen);
-            } else {
-                # TODO: probably core, what if otherwise?
-            }
-        }
+    my %seen;
+    my $dumper = sub {
+        my($dependency, $level) = @_;
+        return if $dependency->dist->is_core;
+        return if $seen{$dependency->distname}++;
+        $self->printf( "%s%s (%s)\n", " " x ($level - 1), $dependency->module, $dependency->distname, INFO );
     };
+    $requirements->walk_down($dumper);
 }
 
 sub cmd_check {
     my($self, @args) = @_;
-    die <<EOF;
-carton check is not implemented yet.
-EOF
+
+    my $lock = $self->find_lock
+      or $self->error("Can't find carton.lock: Run `carton install` to rebuild the lock file.\n");
+
+    my $prereqs = Module::CPANfile->load($self->find_cpanfile)->prereqs;
+
+    # TODO remove $lock
+    # TODO pass git spec to Requirements?
+    my $requirements = Carton::Requirements->new(lock => $lock, prereqs => $prereqs);
+    $requirements->walk_down(sub { });
+
+    my @missing;
+    for my $module ($requirements->all->required_modules) {
+        my $install = $lock->find_or_core($module);
+        if ($install) {
+            unless ($requirements->all->accepts_module($module => $install->version)) {
+                push @missing, [ $module, 1, $install->version ];
+            }
+        } else {
+            push @missing, [ $module, 0 ];
+        }
+    }
+
+    if (@missing) {
+        $self->print("Following dependencies are not satisfied.\n", INFO);
+        for my $missing (@missing) {
+            my($module, $unsatisfied, $version) = @$missing;
+            if ($unsatisfied) {
+                $self->printf("  %s has version %s. Needs %s\n",
+                              $module, $version, $requirements->all->requirements_for_module($module), INFO);
+            } else {
+                $self->printf("  %s is not installed. Needs %s\n",
+                              $module, $requirements->all->requiements_for_module($module), INFO);
+            }
+        }
+        $self->printf("Run `carton install` to install them.\n", INFO);
+        Carton::Error::CommandExit->throw;
+    } else {
+        $self->print("cpanfile's dependencies are satisfied.\n", INFO);
+    }
 }
 
 sub cmd_update {
-    # "cleanly" update distributions in extlib
-    die <<EOF;
-carton update is not implemented yet.
+    my($self, @args) = @_;
 
-The command is supposed to update all the dependencies to the latest
-version as if you don't have the current local environment doesn't
-exist.
+    my $cpanfile = Module::CPANfile->load($self->find_cpanfile);
+    my $prereqs = $cpanfile->prereqs;
 
-For now, you can remove the local environment and re-run carton install
-to get the similar functionality.
+    my $reqs = CPAN::Meta::Requirements->new;
+    $reqs->add_requirements($prereqs->requirements_for($_, 'requires'))
+      for qw( configure build runtime test develop );
 
-EOF
+    @args = grep { $_ ne 'perl' } $reqs->required_modules unless @args;
 
+    my $lock = $self->find_lock
+        or $self->error("Can't find carton.lock: Run `carton install` to build the lock file.\n");
+
+    my @modules;
+    for my $module (@args) {
+        my $dist = $lock->find_or_core($module)
+            or $self->error("Could not find module $module.\n");
+        next if $dist->is_core;
+        push @modules, "$module~" . $reqs->requirements_for_module($module);
+    }
+
+    my $builder = Carton::Builder->new(
+        mirror => $self->mirror,
+    );
+    $builder->update($self->install_path, @modules);
+
+    Carton::Lock->build_from_local($self->install_path, $prereqs)->write($self->lock_file);
 }
 
 sub cmd_exec {
@@ -368,14 +397,9 @@ sub lock_file {
     return 'carton.lock';
 }
 
-sub work_file {
-    my($self, $file) = @_;
-    return join "/", $self->workdir, $file;
-}
-
 sub index_file {
     my $self = shift;
-    $self->work_file("02packages.details.txt");
+    $self->work_file("cache/modules/02packages.details.txt");
 }
 
 1;

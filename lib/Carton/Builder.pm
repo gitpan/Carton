@@ -1,6 +1,5 @@
 package Carton::Builder;
 use strict;
-use File::Temp;
 use Moo;
 
 has mirror  => (is => 'rw');
@@ -14,31 +13,32 @@ sub effective_mirrors {
     # TODO don't pass fallback if --cached is set?
 
     my @mirrors = ($self->mirror);
-    push @mirrors, Carton::Mirror->default if $self->use_darkpan;
+    push @mirrors, Carton::Mirror->default if $self->custom_mirror;
     push @mirrors, Carton::Mirror->new('http://backpan.perl.org/');
 
     @mirrors;
 }
 
-sub use_darkpan {
+sub custom_mirror {
     my $self = shift;
     ! $self->mirror->is_default;
 }
 
 sub bundle {
-    my($self, $path) = @_;
+    my($self, $path, $cache_path, $lock) = @_;
 
-    my $temp = File::Temp::tempdir(CLEANUP => 1); # ignore installed
+    for my $dist ($lock->distributions) {
+        my $source = $path->child("cache/authors/id/" . $dist->pathname);
+        my $target = $cache_path->child("authors/id/" . $dist->pathname);
 
-    $self->run_cpanm(
-        "-L", $temp,
-        (map { ("--mirror", $_->url) } $self->effective_mirrors),
-        "--mirror-index", $self->index,
-        "--skip-satisfied",
-        "--save-dists", $path,
-        "--with-develop",
-        "--installdeps", ".",
-    );
+        if ($source->exists) {
+            warn "Copying ", $dist->pathname, "\n";
+            $target->parent->mkpath;
+            $source->copy($target) or warn "$target: $!";
+        } else {
+            warn "Couldn't find @{[ $dist->pathname ]}\n";
+        }
+    }
 }
 
 sub install {
@@ -47,13 +47,25 @@ sub install {
     $self->run_cpanm(
         "-L", $path,
         (map { ("--mirror", $_->url) } $self->effective_mirrors),
-        "--skip-satisfied",
         ( $self->index ? ("--mirror-index", $self->index) : () ),
         ( $self->cascade ? "--cascade-search" : () ),
-        ( $self->use_darkpan ? "--mirror-only" : () ),
+        ( $self->custom_mirror ? "--mirror-only" : () ),
+        "--save-dists", "$path/cache",
         "--with-develop",
         "--installdeps", ".",
     ) or die "Installing modules failed\n";
+}
+
+sub update {
+    my($self, $path, @modules) = @_;
+
+    $self->run_cpanm(
+        "-L", $path,
+        (map { ("--mirror", $_->url) } $self->effective_mirrors),
+        ( $self->custom_mirror ? "--mirror-only" : () ),
+        "--save-dists", "$path/cache",
+        @modules
+    ) or die "Updating modules failed\n";
 }
 
 sub run_cpanm {

@@ -3,68 +3,46 @@ use strict;
 use base qw(Exporter);
 our @EXPORT = qw(run cli);
 
-use Test::Requires qw( Directory::Scratch Capture::Tiny File::pushd );
+use Test::Requires qw( Capture::Tiny File::pushd );
 
 sub cli {
-    my $dir = Directory::Scratch->new(CLEANUP => !$ENV{NO_CLEANUP});
-    Carton::CLI::Tested->new(dir => $dir);
+    my $cli = Carton::CLI::Tested->new;
+    $cli->dir( Path::Tiny->tempdir(CLEANUP => !$ENV{NO_CLEANUP}) );
+    warn "Temp directory: ", $cli->dir, "\n" if $ENV{NO_CLEANUP};
+    $cli;
 }
 
 package Carton::CLI::Tested;
-use parent qw(Carton::CLI);
-
-$Carton::CLI::UseSystem = 1;
-
 use Capture::Tiny qw(capture);
 use File::pushd ();
-use File::Path ();
+use Path::Tiny;
+use Moo;
 
-sub new {
-    my($class, %args) = @_;
+extends 'Carton::CLI';
+$Carton::CLI::UseSystem = 1;
 
-    my $self = $class->SUPER::new;
-    $self->{dir} = $args{dir};
-
-    return $self;
-}
-
-sub dir {
-    my $self = shift;
-    $self->{dir};
-}
-
-sub print {
-    my $self = shift;
-    $self->{output} .= $_[0];
-}
+has dir => (is => 'rw');
+has stdout => (is => 'rw');
+has stderr => (is => 'rw');
+has exit_code => (is => 'rw');
 
 sub run {
     my($self, @args) = @_;
-    my $pushd = File::pushd::pushd $self->{dir};
-    $self->{output} = '';
-    ($self->{system_output}, $self->{system_error}) = capture {
-        eval { $self->SUPER::run(@args) };
+
+    my $pushd = File::pushd::pushd $self->dir;
+
+    my @capture = capture {
+        my $code = eval { $self->SUPER::run(@args) };
+        $self->exit_code($@ ? 255 : $code);
     };
-}
 
-sub output {
-    my $self = shift;
-    $self->{output};
-}
-
-sub system_output {
-    my $self = shift;
-    $self->{system_output};
-}
-
-sub system_error {
-    my $self = shift;
-    $self->{system_error};
+    $self->stdout($capture[0]);
+    $self->stderr($capture[1]);
 }
 
 sub clean_local {
     my $self = shift;
-    File::Path::rmtree("$self->{dir}/local", 1);
+    $self->dir->child("local")->remove_tree({ safe => 0 });
 }
 
 1;

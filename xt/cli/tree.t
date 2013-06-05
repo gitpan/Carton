@@ -1,20 +1,20 @@
 use strict;
 use Test::More;
 use xt::CLI;
-use Cwd;
 
 {
     my $app = cli();
 
-    $app->dir->touch("cpanfile", <<EOF);
+    $app->dir->child("cpanfile")->spew(<<EOF);
 requires 'HTML::Parser';
 EOF
 
     $app->run("install");
     $app->run("tree");
 
-    like $app->output, qr/^HTML-Parser-.*/m;
-    like $app->output, qr/^ HTML-Tagset-.*/m;
+    is $app->exit_code, 0;
+    like $app->stdout, qr/^HTML::Parser \(HTML-Parser-/m;
+    like $app->stdout, qr/^ HTML::Tagset \(HTML-Tagset-/m;
 }
 
 done_testing;

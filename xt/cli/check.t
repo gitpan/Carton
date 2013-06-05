@@ -2,26 +2,53 @@ use strict;
 use Test::More;
 use xt::CLI;
 
-plan skip_all => "check is unimplemented";
-
 {
     my $app = cli();
 
-    $app->dir->touch("cpanfile", <<EOF);
-requires 'Try::Tiny';
+    $app->dir->child("cpanfile")->spew(<<EOF);
+requires 'Try::Tiny', '== 0.11';
 EOF
 
     $app->run("check");
-    like $app->output, qr/Following dependencies are not satisfied.*Try::Tiny/s;
-    unlike $app->output, qr/found in local but/;
+    like $app->stderr, qr/find carton\.lock/;
 
     $app->run("install");
 
     $app->run("check");
-    like $app->output, qr/matches/;
+    like $app->stdout, qr/are satisfied/;
 
     $app->run("list");
-    like $app->output, qr/Try-Tiny-/;
+    like $app->stdout, qr/Try-Tiny-0\.11/;
+
+    $app->dir->child("cpanfile")->spew(<<EOF);
+requires 'Try::Tiny', '0.12';
+EOF
+
+    $app->run("check");
+    like $app->stdout, qr/not satisfied/;
+
+    # TODO run exec and it will fail again
+
+    $app->run("install");
+
+    $app->run("check");
+    like $app->stdout, qr/are satisfied/;
+
+    $app->run("list");
+    like $app->stdout, qr/Try-Tiny-0\.12/;
+
+    $app->dir->child("cpanfile")->spew(<<EOF);
+requires 'Try::Tiny', '10.00';
+EOF
+
+    $app->run("check");
+    like $app->stdout, qr/not satisfied/;
+
+    $app->run("install");
+    like $app->stderr, qr/failed/;
+
+    $app->run("check");
+    like $app->stdout, qr/not satisfied/;
 }
 
 

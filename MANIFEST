@@ -11,6 +11,8 @@ lib/Carton.pm
 lib/Carton/Builder.pm
 lib/Carton/CLI.pm
 lib/Carton/Dependency.pm
+lib/Carton/Dist.pm
+lib/Carton/Dist/Core.pm
 lib/Carton/Doc/Check.pod
 lib/Carton/Doc/Exec.pod
 lib/Carton/Doc/FAQ.pod
@@ -23,6 +25,7 @@ lib/Carton/Index.pm
 lib/Carton/Lock.pm
 lib/Carton/Mirror.pm
 lib/Carton/Package.pm
+lib/Carton/Requirements.pm
 lib/Carton/Util.pm
 script/carton
 t/release-pod-syntax.t
@@ -30,15 +33,17 @@ xt/CLI.pm
 xt/cli/bundle.t
 xt/cli/check.t
 xt/cli/deployment.t
+xt/cli/deps_phase.t
 xt/cli/exec.t
 xt/cli/freeze.t
 xt/cli/help.t
 xt/cli/json_pp.t
 xt/cli/mirror.t
+xt/cli/mismatch.t
 xt/cli/no_cpanfile.t
 xt/cli/perl.t
-xt/cli/test_deps.t
 xt/cli/tree.t
+xt/cli/update.t
 xt/cli/version.t
 xt/mirror/authors/id/M/MI/MIYAGAWA/Hash-MultiValue-0.08.tar.gz
 xt/mirror/modules/02packages.details.txt

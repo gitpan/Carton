@@ -1,14 +1,13 @@
 use strict;
 use Test::More;
 use xt::CLI;
-use Cwd;
 
-my $cwd = Cwd::cwd();
+my $cwd = Path::Tiny->cwd;
 
 {
     my $app = cli();
 
-    $app->dir->touch("cpanfile", <<EOF);
+    $app->dir->child("cpanfile")->spew(<<EOF);
 requires 'Hash::MultiValue';
 EOF
 
@@ -16,13 +15,13 @@ EOF
     $app->run("install");
 
     $app->run("list");
-    is $app->output, "Hash-MultiValue-0.08\n";
+    is $app->stdout, "Hash-MultiValue-0.08\n";
 }
 
 {
     # fallback to CPAN
     my $app = cli();
-    $app->dir->touch("cpanfile", <<EOF);
+    $app->dir->child("cpanfile")->spew(<<EOF);
 requires 'PSGI';
 EOF
 
@@ -30,7 +29,7 @@ EOF
     $app->run("install");
 
     $app->run("list");
-    like $app->output, qr/^PSGI-/;
+    like $app->stdout, qr/^PSGI-/;
 }
 
 done_testing;

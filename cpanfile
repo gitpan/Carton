@@ -1,6 +1,8 @@
-requires 'perl', '5.8.5';
+on configure => sub {
+    requires 'version', 0.77;
+};
 
-configure_requires 'version', 0.77;
+requires 'perl', '5.8.5';
 
 requires 'JSON', 2.53;
 requires 'Module::Metadata', 1.000003;
@@ -11,7 +13,8 @@ requires 'parent', 0.223;
 requires 'local::lib', 1.008;
 requires 'Exception::Class', 1.32;
 requires 'Getopt::Long', 2.39;
-requires 'Moo', '1.002';
+requires 'Moo', 1.002;
+requires 'Path::Tiny', 0.022;
 
 # MYMETA support
 requires 'App::cpanminus', 1.6915;
@@ -21,8 +24,8 @@ requires 'CPAN::Meta', 2.120921;
 requires 'CPAN::Meta::Requirements', 2.121;
 
 on develop => sub {
+    requires 'Test::More', 0.88;
     requires 'Test::Requires';
-    requires 'Directory::Scratch';
     requires 'Capture::Tiny';
     requires 'File::pushd';
 };

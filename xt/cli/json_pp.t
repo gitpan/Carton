@@ -7,7 +7,7 @@ plan skip_all => "perl <= 5.14" if $] >= 5.015;
 {
     my $app = cli();
 
-    $app->dir->touch("cpanfile", <<EOF);
+    $app->dir->child("cpanfile")->spew(<<EOF);
 requires 'JSON';
 requires 'CPAN::Meta', '2.12';
 EOF
@@ -15,11 +15,8 @@ EOF
     $app->run("install");
     $app->clean_local;
 
-    TODO: {
-        local $TODO = "collect installs";
-        $app->run("install", "--deployment");
-        unlike $app->system_error, qr/JSON::PP is not in range/;
-    }
+    $app->run("install", "--deployment");
+    unlike $app->stderr, qr/JSON::PP is not in range/;
 }
 
 done_testing;

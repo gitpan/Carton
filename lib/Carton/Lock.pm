@@ -1,12 +1,15 @@
 package Carton::Lock;
 use strict;
 use Config;
-use Carton::Dependency;
+use Carton::Dist;
+use Carton::Dist::Core;
 use Carton::Package;
 use Carton::Index;
 use Carton::Util;
 use CPAN::Meta;
+use CPAN::Meta::Requirements;
 use File::Find ();
+use Module::CoreList;
 use Moo;
 
 has version => (is => 'ro');
@@ -26,8 +29,8 @@ sub write {
     Carton::Util::dump_json({ %$self }, $file);
 }
 
-sub dependencies {
-    map Carton::Dependency->new($_), values %{$_[0]->modules}
+sub distributions {
+    map Carton::Dist->new($_), values %{$_[0]->modules}
 }
 
 sub find {
@@ -35,8 +38,24 @@ sub find {
 
     for my $meta (values %{$_[0]->modules}) {
         if ($meta->{provides}{$module}) {
-            return Carton::Dependency->new( $self->modules->{$meta->{name}} );
+            return Carton::Dist->new( $self->modules->{$meta->{name}} );
         }
+    }
+
+    return;
+}
+
+sub find_or_core {
+    my($self, $module) = @_;
+    $self->find($module) || $self->find_in_core($module);
+}
+
+sub find_in_core {
+    my($self, $module) = @_;
+
+    if (exists $Module::CoreList::version{$]}{$module}) {
+        my $version = $Module::CoreList::version{$]}{$module}; # maybe undef
+        return Carton::Dist::Core->new(name => $module, version => $version);
     }
 
     return;
@@ -75,21 +94,25 @@ sub write_index {
 }
 
 sub build_from_local {
-    my($class, $path) = @_;
+    my($class, $path, $prereqs) = @_;
 
-    my %installs = $class->find_installs($path);
+    my $installs = $class->find_installs($path, $prereqs);
 
     return $class->new(
-        modules => \%installs,
+        modules => $installs,
         version => CARTON_LOCK_VERSION,
     );
 }
 
 sub find_installs {
-    my($class, $path) = @_;
+    my($class, $path, $prereqs) = @_;
 
     my $libdir = "$path/lib/perl5/$Config{archname}/.meta";
-    return unless -e $libdir;
+    return {} unless -e $libdir;
+
+    my $reqs = CPAN::Meta::Requirements->new;
+    $reqs->add_requirements($prereqs->requirements_for($_, 'requires'))
+      for qw( configure build runtime test develop );
 
     my @installs;
     my $wanted = sub {
@@ -99,10 +122,28 @@ sub find_installs {
     };
     File::Find::find($wanted, $libdir);
 
-    return map {
-        my $module = Carton::Util::load_json($_->[0]);
-        my $mymeta = -f $_->[1] ? CPAN::Meta->load_file($_->[1])->as_struct({ version => "2" }) : {};
-        ($module->{name} => { %$module, mymeta => $mymeta }) } @installs;
+    my %installs;
+    for my $file (@installs) {
+        my $module = Carton::Util::load_json($file->[0]);
+        my $mymeta = -f $file->[1] ? CPAN::Meta->load_file($file->[1])->as_struct({ version => "2" }) : {};
+        if ($reqs->accepts_module($module->{name}, $module->{provides}{$module->{name}}{version})) {
+            if (my $exist = $installs{$module->{name}}) {
+                my $old_ver = version->new($exist->{provides}{$module->{name}}{version});
+                my $new_ver = version->new($module->{provides}{$module->{name}}{version});
+                if ($new_ver >= $old_ver) {
+                    $installs{ $module->{name} } = { %$module, mymeta => $mymeta };
+                } else {
+                    # Ignore same distributions older than the one we have
+                }
+            } else {
+                $installs{ $module->{name} } = { %$module, mymeta => $mymeta };
+            }
+        } else {
+            # Ignore installs because cpanfile doesn't accept it
+        }
+    }
+
+    return \%installs;
 }
 
 1;
