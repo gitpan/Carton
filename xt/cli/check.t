@@ -2,15 +2,21 @@ use strict;
 use Test::More;
 use xt::CLI;
 
-{
+subtest 'carton check fails when there is no lock' => sub {
     my $app = cli();
-
-    $app->dir->child("cpanfile")->spew(<<EOF);
+    $app->write_cpanfile(<<EOF);
 requires 'Try::Tiny', '== 0.11';
 EOF
 
     $app->run("check");
     like $app->stderr, qr/find carton\.lock/;
+};
+
+subtest 'carton install and check' => sub {
+    my $app = cli();
+    $app->write_cpanfile(<<EOF);
+requires 'Try::Tiny', '== 0.11';
+EOF
 
     $app->run("install");
 
@@ -20,14 +26,18 @@ EOF
     $app->run("list");
     like $app->stdout, qr/Try-Tiny-0\.11/;
 
-    $app->dir->child("cpanfile")->spew(<<EOF);
+    $app->write_cpanfile(<<EOF);
 requires 'Try::Tiny', '0.12';
 EOF
 
     $app->run("check");
     like $app->stdout, qr/not satisfied/;
 
-    # TODO run exec and it will fail again
+ TODO: {
+        local $TODO = 'exec does not verify lock';
+        $app->run("exec", "perl", "use Try::Tiny");
+        like $app->stderr, qr/lock/;
+    }
 
     $app->run("install");
 
@@ -37,7 +47,7 @@ EOF
     $app->run("list");
     like $app->stdout, qr/Try-Tiny-0\.12/;
 
-    $app->dir->child("cpanfile")->spew(<<EOF);
+    $app->write_cpanfile(<<EOF);
 requires 'Try::Tiny', '10.00';
 EOF
 
@@ -49,8 +59,26 @@ EOF
 
     $app->run("check");
     like $app->stdout, qr/not satisfied/;
-}
+};
 
+subtest 'detect unused modules' => sub {
+    my $app = cli;
+    $app->write_cpanfile("requires 'Try::Tiny';");
+
+    $app->run("install");
+    $app->write_cpanfile("");
+
+
+ TODO: {
+        local $TODO = "Can't detect superflous modules";
+        $app->run("install");
+        $app->run("list");
+        is $app->stdout, "";
+
+        $app->run("check");
+        like $app->stdout, qr/unused/;
+    }
+};
 
 done_testing;
 
