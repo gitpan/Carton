@@ -173,10 +173,12 @@ sub cmd_install {
     my($self, @args) = @_;
 
     my $path = $self->install_path;
+    my @without;
 
     $self->parse_options(
         \@args,
         "p|path=s"    => \$path,
+        "without=s"   => sub { push @without,  split /,/, $_[1] },
         "deployment!" => \my $deployment,
         "cached!"     => \my $cached,
     );
@@ -191,8 +193,11 @@ sub cmd_install {
 
     my $builder = Carton::Builder->new(
         cascade => 1,
-        mirror => $self->mirror,
+        mirror  => $self->mirror,
+        without => \@without,
     );
+
+    # TODO: --without with no .lock won't fetch the groups, resulting in insufficient requirements
 
     if ($deployment) {
         $self->print("Installing modules using $cpanfile (deployment mode)\n");

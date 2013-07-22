@@ -45,6 +45,7 @@ xt/cli/perl.t
 xt/cli/tree.t
 xt/cli/update.t
 xt/cli/version.t
+xt/cli/without.t
 xt/mirror/authors/id/M/MI/MIYAGAWA/Hash-MultiValue-0.08.tar.gz
 xt/mirror/modules/02packages.details.txt
 xt/mirror/modules/02packages.details.txt.gz
