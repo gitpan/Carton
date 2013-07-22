@@ -20,9 +20,11 @@ lib/Carton/Doc/Install.pod
 lib/Carton/Doc/List.pod
 lib/Carton/Doc/Show.pod
 lib/Carton/Doc/Version.pod
+lib/Carton/Environment.pm
 lib/Carton/Error.pm
 lib/Carton/Index.pm
 lib/Carton/Lock.pm
+lib/Carton/Lockfile.pm
 lib/Carton/Mirror.pm
 lib/Carton/Package.pm
 lib/Carton/Requirements.pm
@@ -42,6 +44,7 @@ xt/cli/mirror.t
 xt/cli/mismatch.t
 xt/cli/no_cpanfile.t
 xt/cli/perl.t
+xt/cli/subdir.t
 xt/cli/tree.t
 xt/cli/update.t
 xt/cli/version.t
