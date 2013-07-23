@@ -23,7 +23,6 @@ lib/Carton/Doc/Version.pod
 lib/Carton/Environment.pm
 lib/Carton/Error.pm
 lib/Carton/Index.pm
-lib/Carton/Lock.pm
 lib/Carton/Lockfile.pm
 lib/Carton/Mirror.pm
 lib/Carton/Package.pm
