@@ -34,6 +34,7 @@ t/release-pod-syntax.t
 xt/CLI.pm
 xt/cli/bundle.t
 xt/cli/check.t
+xt/cli/cpanfile.t
 xt/cli/deployment.t
 xt/cli/deps_phase.t
 xt/cli/exec.t
