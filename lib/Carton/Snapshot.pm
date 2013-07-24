@@ -42,7 +42,7 @@ sub load {
         return 1;
     } else {
         Carton::Error::SnapshotNotFound->throw(
-            error => "Can't find cpanfile.snapshot: Run `carton install` to build the lock file.",
+            error => "Can't find cpanfile.snapshot: Run `carton install` to build the snapshot file.",
             path => $self->path,
         );
     }
@@ -68,7 +68,7 @@ sub find_in_core {
 
     if (exists $Module::CoreList::version{$]}{$module}) {
         my $version = $Module::CoreList::version{$]}{$module}; # maybe undef
-        return Carton::Dist::Core->new(name => $module, version => $version);
+        return Carton::Dist::Core->new(name => $module, module_version => $version);
     }
 
     return;

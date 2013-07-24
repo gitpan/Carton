@@ -26,10 +26,10 @@ lib/Carton/Error.pm
 lib/Carton/Index.pm
 lib/Carton/Mirror.pm
 lib/Carton/Package.pm
-lib/Carton/Requirements.pm
 lib/Carton/Snapshot.pm
 lib/Carton/Snapshot/Emitter.pm
 lib/Carton/Snapshot/Parser.pm
+lib/Carton/Tree.pm
 lib/Carton/Util.pm
 script/carton
 t/release-pod-syntax.t
