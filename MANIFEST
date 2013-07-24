@@ -10,6 +10,7 @@ dist.ini
 lib/Carton.pm
 lib/Carton/Builder.pm
 lib/Carton/CLI.pm
+lib/Carton/CPANfile.pm
 lib/Carton/Dependency.pm
 lib/Carton/Dist.pm
 lib/Carton/Dist/Core.pm
@@ -23,10 +24,12 @@ lib/Carton/Doc/Version.pod
 lib/Carton/Environment.pm
 lib/Carton/Error.pm
 lib/Carton/Index.pm
-lib/Carton/Lockfile.pm
 lib/Carton/Mirror.pm
 lib/Carton/Package.pm
 lib/Carton/Requirements.pm
+lib/Carton/Snapshot.pm
+lib/Carton/Snapshot/Emitter.pm
+lib/Carton/Snapshot/Parser.pm
 lib/Carton/Util.pm
 script/carton
 t/release-pod-syntax.t
@@ -44,6 +47,7 @@ xt/cli/mirror.t
 xt/cli/mismatch.t
 xt/cli/no_cpanfile.t
 xt/cli/perl.t
+xt/cli/snapshot.t
 xt/cli/subdir.t
 xt/cli/tree.t
 xt/cli/update.t

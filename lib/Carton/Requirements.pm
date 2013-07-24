@@ -4,24 +4,17 @@ use Carton::Dependency;
 use Moo;
 use CPAN::Meta::Requirements;
 
-has lock => (is => 'ro');
-has prereqs => (is => 'ro');
+has snapshot => (is => 'ro');
+has requirements => (is => 'ro');
 has all => (is => 'ro', default => sub { CPAN::Meta::Requirements->new });
 
 sub walk_down {
     my($self, $cb) = @_;
 
     my $dumper; $dumper = sub {
-        my($dependency, $prereqs, $level, $parent) = @_;
+        my($dependency, $reqs, $level, $parent) = @_;
 
         $cb->($dependency, $level) if $dependency;
-
-        my @phase = qw( configure build runtime );
-        push @phase, qw( test develop ) unless $dependency;
-
-        my $reqs = CPAN::Meta::Requirements->new;
-        $reqs->add_requirements($prereqs->requirements_for($_, 'requires')) for @phase;
-        $reqs->clear_requirement('perl'); # for now
 
         $self->all->add_requirements($reqs) unless $self->all->is_finalized;
 
@@ -31,15 +24,16 @@ sub walk_down {
             my $dependency = $self->dependency_for($module, $reqs);
             if ($dependency->dist) {
                 next if $parent->{$dependency->distname};
-                $dumper->($dependency, $dependency->prereqs, $level + 1);
+                $dumper->($dependency, $dependency->requirements, $level + 1);
             } else {
                 # no dist found in lock
             }
         }
     };
 
-    $dumper->(undef, $self->prereqs, 0, {});
+    $dumper->(undef, $self->requirements, 0, {});
 
+    $self->all->clear_requirement('perl');
     $self->all->finalize;
 }
 
@@ -52,7 +46,7 @@ sub dependency_for {
     $dep->module($module);
     $dep->requirement($requirement);
 
-    if (my $dist = $self->lock->find_or_core($module)) {
+    if (my $dist = $self->snapshot->find_or_core($module)) {
         $dep->dist($dist);
     }
 
