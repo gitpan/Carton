@@ -13,7 +13,7 @@ license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
   version: 1.4
-name: carton
+name: Carton
 no_index:
   directory:
     - t
@@ -32,6 +32,7 @@ requires:
   JSON: 2.53
   Module::Build: 0.4004
   Module::CPANfile: 0.9031
+  Module::CoreList: 0
   Module::Metadata: 1.000003
   Moo: 1.002
   Path::Tiny: 0.022
@@ -43,7 +44,7 @@ resources:
   bugtracker: https://github.com/miyagawa/carton/issues
   homepage: https://github.com/miyagawa/carton
   repository: https://github.com/miyagawa/carton.git
-version: v0.9.67
+version: v0.9.68
 x_contributors:
   - 'Christian Walde <walde.christian@googlemail.com>'
   - 'David Golden <dagolden@cpan.org>'
