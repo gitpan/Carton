@@ -1,7 +1,7 @@
 package Carton;
 use strict;
 use 5.008_005;
-use version; our $VERSION = version->declare("v0.9.68");
+use version; our $VERSION = version->declare("v1.0.0");
 
 1;
 __END__
@@ -31,6 +31,16 @@ B<This software is under heavy development and considered ALPHA
 quality till its version hits v1.0.0. Things might be broken, not all
 features have been implemented, and APIs are likely to change. YOU
 HAVE BEEN WARNED.>
+
+=head1 AVAILABILITY
+
+Carton only works with perl installation with the complete set of core
+modules. If you use perl installed by a vendor package with modules
+stripped from core, Carton is not expected to work correctly.
+
+Also, Carton requires you to run your command/application with
+C<carton exec> command, which means it's difficult or impossible to
+run in an embedded perl use case such as mod_perl.
 
 =head1 DESCRIPTION
 

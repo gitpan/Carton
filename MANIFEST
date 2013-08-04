@@ -20,6 +20,7 @@ lib/Carton/Doc/FAQ.pod
 lib/Carton/Doc/Install.pod
 lib/Carton/Doc/List.pod
 lib/Carton/Doc/Show.pod
+lib/Carton/Doc/Update.pod
 lib/Carton/Doc/Version.pod
 lib/Carton/Environment.pm
 lib/Carton/Error.pm

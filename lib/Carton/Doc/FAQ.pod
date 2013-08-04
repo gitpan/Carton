@@ -40,7 +40,8 @@ carton definitely shares the goal with these private CPAN repository
 management tool. But the main difference is that rather than creating
 an actual CPAN-like repository that works with any CPAN clients,
 Carton provides a way to install specific versions of distributions
-from CPAN, or any CPAN-like mirrors, as well as git repositories.
+from CPAN, or any CPAN-like mirrors (as well as git repositories in
+the future version of Carton).
 
 Existing tools are designed to work I<with> CPAN clients such as
 L<CPAN> or L<CPANPLUS>, and have accomplished that by working around
@@ -56,7 +57,13 @@ to be version controlled, inside your application directory. You don't
 need a separate database, a directory or a web server to maintain
 tarballs outside your application. The I<cpanfile.snapshot> file can always
 be generated with C<carton install> command, and C<carton install> on
-another machine can use the version in the lock.
+another machine can use the version in the snapshot.
+
+=head2 I already use Pinto to create DarkPAN mirror. Can I use Carton with this?
+
+Yes, by specifying Pinto mirror as your Carton mirror, you can take a
+snapshot of your dependencies including your private modules on Pinto,
+or whatever DarkPAN mirror.
 
 =head2 I'm already using perlbrew and local::lib. Can I use carton with this?
 
