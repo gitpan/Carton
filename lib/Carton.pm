@@ -1,7 +1,7 @@
 package Carton;
 use strict;
 use 5.008_005;
-use version; our $VERSION = version->declare("v1.0.0");
+use version; our $VERSION = version->declare("v1.0.1");
 
 1;
 __END__
@@ -24,13 +24,6 @@ Carton - Perl module dependency manager (aka Bundler for Perl)
   # Other developer's machine, or on a deployment box
   > carton install
   > carton exec starman -p 8080 myapp.psgi
-
-=head1 WARNING
-
-B<This software is under heavy development and considered ALPHA
-quality till its version hits v1.0.0. Things might be broken, not all
-features have been implemented, and APIs are likely to change. YOU
-HAVE BEEN WARNED.>
 
 =head1 AVAILABILITY
 

@@ -43,6 +43,7 @@ xt/cli/deps_phase.t
 xt/cli/exec.t
 xt/cli/freeze.t
 xt/cli/help.t
+xt/cli/install.t
 xt/cli/json_pp.t
 xt/cli/mirror.t
 xt/cli/mismatch.t
