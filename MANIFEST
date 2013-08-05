@@ -14,12 +14,14 @@ lib/Carton/CPANfile.pm
 lib/Carton/Dependency.pm
 lib/Carton/Dist.pm
 lib/Carton/Dist/Core.pm
+lib/Carton/Doc/Bundle.pod
 lib/Carton/Doc/Check.pod
 lib/Carton/Doc/Exec.pod
 lib/Carton/Doc/FAQ.pod
 lib/Carton/Doc/Install.pod
 lib/Carton/Doc/List.pod
 lib/Carton/Doc/Show.pod
+lib/Carton/Doc/Tree.pod
 lib/Carton/Doc/Update.pod
 lib/Carton/Doc/Version.pod
 lib/Carton/Environment.pm
