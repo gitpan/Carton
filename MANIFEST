@@ -23,12 +23,14 @@ lib/Carton/Doc/List.pod
 lib/Carton/Doc/Show.pod
 lib/Carton/Doc/Tree.pod
 lib/Carton/Doc/Update.pod
+lib/Carton/Doc/Upgrading.pod
 lib/Carton/Doc/Version.pod
 lib/Carton/Environment.pm
 lib/Carton/Error.pm
 lib/Carton/Index.pm
 lib/Carton/Mirror.pm
 lib/Carton/Package.pm
+lib/Carton/Packer.pm
 lib/Carton/Snapshot.pm
 lib/Carton/Snapshot/Emitter.pm
 lib/Carton/Snapshot/Parser.pm
