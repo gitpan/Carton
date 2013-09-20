@@ -6,7 +6,7 @@ use URI;
 use File::Basename ();
 
 has 'module' => (is => 'rw');
-has 'requirement' => (is => 'rw');
+has 'requirement' => (is => 'rw', handles => ['options']);
 
 sub provides {
     my $self = shift;
@@ -19,9 +19,13 @@ sub provides {
 
 sub pathname {
     my $self = shift;
-    my $uri = $self->requirement->git;
-    $uri .= '@' . $self->requirement->ref if $self->requirement->ref;
-    $uri;
+
+    if (my $git = $self->options->{git}) {
+        $git .= '@' . $self->options->{ref} if $self->options->{ref};
+        return $git;
+    } elsif ($self->options->{dist}) {
+        return $self->options->{dist};
+    }
 }
 
 1;
