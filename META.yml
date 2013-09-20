@@ -8,7 +8,7 @@ configure_requires:
   Module::Build: 0.3601
   version: 0.77
 dynamic_config: 0
-generated_by: 'Dist::Milla version v1.0.4, Dist::Zilla version 4.300038, CPAN::Meta::Converter version 2.132510'
+generated_by: 'Dist::Milla version v1.0.4, Dist::Zilla version 4.300039, CPAN::Meta::Converter version 2.132620'
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -24,7 +24,7 @@ no_index:
     - examples
 requires:
   App::FatPacker: 0.009018
-  App::cpanminus: 1.694
+  App::cpanminus: 1.7102
   CPAN::Meta: 2.120921
   CPAN::Meta::Requirements: 2.121
   Exception::Class: 1.32
@@ -33,7 +33,7 @@ requires:
   Getopt::Long: 2.39
   JSON: 2.53
   Module::Build: 0.4004
-  Module::CPANfile: 0.9031
+  Module::CPANfile: 1.0903
   Module::CoreList: 0
   Module::Metadata: 1.000003
   Module::Reader: 0.002
@@ -46,7 +46,7 @@ resources:
   bugtracker: https://github.com/miyagawa/carton/issues
   homepage: https://github.com/miyagawa/carton
   repository: https://github.com/miyagawa/carton.git
-version: v1.0.11
+version: v1.0.900
 x_contributors:
   - 'Christian Walde <walde.christian@googlemail.com>'
   - 'David Golden <dagolden@cpan.org>'

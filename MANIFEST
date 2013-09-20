@@ -14,6 +14,7 @@ lib/Carton/CPANfile.pm
 lib/Carton/Dependency.pm
 lib/Carton/Dist.pm
 lib/Carton/Dist/Core.pm
+lib/Carton/Dist/Specific.pm
 lib/Carton/Doc/Bundle.pod
 lib/Carton/Doc/Check.pod
 lib/Carton/Doc/Exec.pod
@@ -46,6 +47,7 @@ xt/cli/deployment.t
 xt/cli/deps_phase.t
 xt/cli/exec.t
 xt/cli/freeze.t
+xt/cli/git.t
 xt/cli/help.t
 xt/cli/install.t
 xt/cli/json_pp.t
