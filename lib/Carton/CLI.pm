@@ -145,6 +145,12 @@ sub cmd_version {
 sub cmd_bundle {
     my($self, @args) = @_;
 
+    my $fatpack = 1;
+    $self->parse_options(
+        \@args,
+        "fatpack!" => \$fatpack,
+    );
+
     my $env = Carton::Environment->build;
     $env->snapshot->load;
 
@@ -156,8 +162,10 @@ sub cmd_bundle {
     );
     $builder->bundle($env->install_path, $env->vendor_cache, $env->snapshot);
 
-    require Carton::Packer;
-    Carton::Packer->new->fatpack_carton($env->vendor_bin);
+    if ($fatpack) {
+        require Carton::Packer;
+        Carton::Packer->new->fatpack_carton($env->vendor_bin);
+    }
 
     $self->printf("Complete! Modules were bundled into %s\n", $env->vendor_cache, SUCCESS);
 }
@@ -199,15 +207,14 @@ sub cmd_install {
         $self->print("Installing modules using @{[$env->cpanfile]}\n");
     }
 
-    # Gather git from cpanfile, even when .snapshot does not exist
-    $env->cpanfile->load;
-    $env->snapshot->preload_cpanfile($env->cpanfile);
+    # TODO merge CPANfile git to mirror even if lock doesn't exist
+    if ($env->snapshot->loaded) {
+        my $index_file = $env->install_path->child("cache/modules/02packages.details.txt");
+           $index_file->parent->mkpath;
 
-    my $index_file = $env->install_path->child("cache/modules/02packages.details.txt");
-       $index_file->parent->mkpath;
-
-    $env->snapshot->write_index($index_file);
-    $builder->index($index_file);
+        $env->snapshot->write_index($index_file);
+        $builder->index($index_file);
+    }
 
     if ($cached) {
         $builder->mirror(Carton::Mirror->new($env->vendor_cache));
@@ -216,6 +223,7 @@ sub cmd_install {
     $builder->install($env->install_path);
 
     unless ($deployment) {
+        $env->cpanfile->load;
         $env->snapshot->find_installs($env->install_path, $env->cpanfile->requirements);
         $env->snapshot->save;
     }

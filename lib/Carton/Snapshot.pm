@@ -4,7 +4,6 @@ use warnings NONFATAL => 'all';
 use Config;
 use Carton::Dist;
 use Carton::Dist::Core;
-use Carton::Dist::Specific;
 use Carton::Error;
 use Carton::Package;
 use Carton::Index;
@@ -100,8 +99,7 @@ sub packages {
 
     my @packages;
     for my $dist ($self->distributions) {
-        my $provides = $dist->provides;
-        while (my($package, $provides) = each %$provides) {
+        while (my($package, $provides) = each %{$dist->provides}) {
             # TODO what if duplicates?
             push @packages, Carton::Package->new($package, $provides->{version}, $dist->pathname);
         }
@@ -156,11 +154,9 @@ sub find_installs {
           for qw( configure build runtime );
 
         if ($accepts->($module)) {
-            my $pathname = $module->{source} && $module->{source} eq 'git'
-              ? join('@', $module->{uri}, $module->{revision}) : $module->{pathname};
             $installs{$module->{name}} = Carton::Dist->new(
                 name => $module->{dist},
-                pathname => $pathname,
+                pathname => $module->{pathname},
                 provides => $module->{provides},
                 version => $module->{version},
                 requirements => $reqs,
@@ -174,19 +170,6 @@ sub find_installs {
     }
 
     $self->_distributions(\@new_dists);
-}
-
-sub preload_cpanfile {
-    my($self, $cpanfile) = @_;
-
-    my $reqs = $cpanfile->merged_requirements;
-    for my $module ($reqs->required_modules) {
-        my $prereq = $cpanfile->prereq_for_module($module) or next;
-        if ($prereq->requirement->has_options) {
-            my $dist = Carton::Dist::Specific->new(module => $module, requirement => $prereq->requirement);
-            $self->add_distribution($dist);
-        }
-    }
 }
 
 1;
